@@ -1,0 +1,30 @@
+# SQLite databases
+*.sqlite3
+**/*.sqlite3
+
+# Python bytecode & cache
+*.pyc
+__pycache__/
+
+# Static assets build
+staticfiles/
+
+# IDE & Editor settings
+.vscode/
+.idea/
+
+# Logs & temp files
+*.log
+*.tmp
+.*backup*
+*backup*
+
+# Virtual environments
+venv/
+**/venv/
+.venv/
+
+# Environment files containing sensitive credentials
+.env
+.env*
+!.env*.example

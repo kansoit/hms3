@@ -1,0 +1,662 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+    <!-- KPI PACIENTES -->
+    <div class="col-md-3">
+        <div class="card card-kpi bg-white p-3">
+            <div class="d-flex align-items-center">
+                <div class="rounded-3 bg-primary bg-opacity-10 text-primary p-3 me-3 fs-3">
+                    <i class="fa-solid fa-hospital-user"></i>
+                </div>
+                <div>
+                    <h6 class="text-muted text-uppercase mb-1 small fw-semibold">{{ txt.stat_patients }}</h6>
+                    <h3 class="mb-0 fw-bold">{{ total_pacientes }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KPI MEDICOS -->
+    <div class="col-md-3">
+        <div class="card card-kpi bg-white p-3">
+            <div class="d-flex align-items-center">
+                <div class="rounded-3 bg-success bg-opacity-10 text-success p-3 me-3 fs-3">
+                    <i class="fa-solid fa-user-doctor"></i>
+                </div>
+                <div>
+                    <h6 class="text-muted text-uppercase mb-1 small fw-semibold">{{ txt.stat_doctors }}</h6>
+                    <h3 class="mb-0 fw-bold">{{ total_medicos }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KPI OBRAS SOCIALES -->
+    <div class="col-md-3">
+        <div class="card card-kpi bg-white p-3">
+            <div class="d-flex align-items-center">
+                <div class="rounded-3 bg-warning bg-opacity-10 text-warning p-3 me-3 fs-3">
+                    <i class="fa-solid fa-notes-medical"></i>
+                </div>
+                <div>
+                    <h6 class="text-muted text-uppercase mb-1 small fw-semibold">{{ txt.stat_insurance }}</h6>
+                    <h3 class="mb-0 fw-bold">{{ obras_sociales_count }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KPI COMPLIANCE -->
+    <div class="col-md-3">
+        <div class="card card-kpi bg-white p-3">
+            <div class="d-flex align-items-center">
+                {% if IS_MASKED %}
+                <div class="rounded-3 bg-success text-white p-3 me-3 fs-3">
+                    <i class="fa-solid fa-user-shield"></i>
+                </div>
+                <div>
+                    <h6 class="text-muted text-uppercase mb-1 small fw-semibold">Compliance Status</h6>
+                    <span class="badge bg-success fs-6"><i class="fa-solid fa-check-double me-1"></i> {% if HMS_COUNTRY == 'US' %}MASKED (VDB){% elif HMS_COUNTRY == 'BR' %}MASCARADO (VDB){% else %}ENMASCARADO (VDB){% endif %}</span>
+                </div>
+                {% else %}
+                <div class="rounded-3 bg-danger text-white p-3 me-3 fs-3">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div>
+                    <h6 class="text-muted text-uppercase mb-1 small fw-semibold">Compliance Status</h6>
+                    <span class="badge bg-danger fs-6"><i class="fa-solid fa-unlock me-1"></i> {% if HMS_COUNTRY == 'US' %}PRODUCTION (dSource){% elif HMS_COUNTRY == 'BR' %}PRODUÇÃO (dSource){% else %}PRODUCCIÓN (dSource){% endif %}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- NAVEGACIÓN POR PESTAÑAS -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white border-bottom pt-3 pb-0">
+        <ul class="nav nav-tabs card-header-tabs" id="demoTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if active_tab != 'medicos' %}active{% endif %} fw-bold text-dark" id="pacientes-tab" data-bs-toggle="tab" data-bs-target="#pacientes-pane" type="button" role="tab">
+                    <i class="fa-solid fa-bed-pulse text-primary me-2"></i> {{ txt.tab_patients }} ({{ total_pacientes }})
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if active_tab == 'medicos' %}active{% endif %} fw-bold text-dark" id="medicos-tab" data-bs-toggle="tab" data-bs-target="#medicos-pane" type="button" role="tab">
+                    <i class="fa-solid fa-stethoscope text-success me-2"></i> {{ txt.tab_doctors }} ({{ total_medicos }})
+                </button>
+            </li>
+        </ul>
+    </div>
+
+    <div class="card-body p-4">
+        <div class="tab-content" id="demoTabsContent">
+            
+            <!-- PESTAÑA: PACIENTES -->
+            <div class="tab-pane fade {% if active_tab != 'medicos' %}show active{% endif %}" id="pacientes-pane" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge {% if IS_MASKED %}badge-masked{% else %}badge-sensitive{% endif %} px-3 py-2">
+                            <i class="fa-solid fa-fingerprint me-1"></i> 
+                            {% if HMS_COUNTRY == 'US' %}
+                                Audited HIPAA Fields: SSN, State ID, Name, Phone, Address, Email, Diagnosis, Notes
+                            {% elif HMS_COUNTRY == 'BR' %}
+                                Campos auditados LGPD: CPF, RG, Nome, Telefone, Endereço, E-mail, Prontuário
+                            {% else %}
+                                Campos auditados Ley 25.326: DNI, CUIL, Nombre, Teléfono, Dirección, Email, Diagnóstico
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-primary btn-sm px-3 fw-semibold shadow-sm text-nowrap" onclick="nuevoPaciente()">
+                            <i class="fa-solid fa-user-plus me-1"></i> {{ txt.btn_new_patient }}
+                        </button>
+                        <form method="get" class="d-flex gap-2">
+                            <input type="hidden" name="tab" value="pacientes">
+                            <input type="text" name="q_paciente" id="search-paciente" class="form-control form-control-sm" placeholder="{{ txt.search_patient }}" value="{{ q_paciente }}" style="min-width: 240px;" autocomplete="off">
+                            <button type="submit" class="btn btn-secondary btn-sm px-3"><i class="fa-solid fa-magnifying-glass"></i></button>
+                            {% if q_paciente %}
+                            <a href="/?tab=pacientes" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-xmark"></i></a>
+                            {% endif %}
+                        </form>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped table-bordered table-custom align-middle mb-0" id="tabla-pacientes">
+                        <thead>
+                            <tr>
+                                <th>{{ txt.col_id }}</th>
+                                <th>{{ txt.col_doc1 }}</th>
+                                <th>{{ txt.col_doc2 }}</th>
+                                <th>{{ txt.col_name }}</th>
+                                <th>{{ txt.col_phone }}</th>
+                                <th>{{ txt.col_email }}</th>
+                                <th>{{ txt.col_address }}</th>
+                                <th>{{ txt.col_insurance }}</th>
+                                <th>{{ txt.col_diagnosis }}</th>
+                                <th class="text-center" style="min-width: 110px;">{{ txt.col_actions }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in pacientes %}
+                            <tr id="fila-paciente-{{ p.id }}">
+                                <td class="text-muted fw-bold">{{ p.id }}</td>
+                                <td class="font-monospace fw-bold text-dark">{{ p.dni }}</td>
+                                <td class="font-monospace text-primary fw-semibold">{{ p.cuil }}</td>
+                                <td class="fw-semibold">{{ p.apellido }}, {{ p.nombre }}</td>
+                                <td class="font-monospace">{{ p.telefono_celular }}</td>
+                                <td class="small">{{ p.email }}</td>
+                                <td class="small">{{ p.direccion }}, {{ p.localidad }}</td>
+                                <td>
+                                    <span class="badge bg-light text-dark border">{{ p.obra_social }}</span><br>
+                                    <span class="small text-muted font-monospace">{{ p.numero_afiliado }}</span>
+                                </td>
+                                <td><span class="small">{{ p.diagnostico_clinico|truncatechars:35 }}</span></td>
+                                <td class="text-center text-nowrap">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <button class="btn btn-outline-primary" onclick="verFichaPaciente({{ p.id }})" title="Ver ficha clínica completa">
+                                            <i class="fa-solid fa-file-medical"></i>
+                                        </button>
+                                        <button class="btn btn-outline-warning" onclick="editarPaciente({{ p.id }})" title="Editar paciente">
+                                            <i class="fa-solid fa-pen-to-square"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" onclick="confirmarEliminarPaciente({{ p.id }}, '{{ p.apellido|escapejs }}, {{ p.nombre|escapejs }}')" title="Eliminar paciente (Simular falla UAT)">
+                                            <i class="fa-solid fa-trash-can"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="10" class="text-center py-4 text-muted">
+                                    <i class="fa-solid fa-folder-open fs-2 mb-2 d-block"></i>
+                                    {{ txt.empty_patients }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PESTAÑA: MÉDICOS -->
+            <div class="tab-pane fade {% if active_tab == 'medicos' %}show active{% endif %}" id="medicos-pane" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <span class="badge bg-light text-dark border px-3 py-2">
+                        <i class="fa-solid fa-user-doctor me-1"></i> {{ txt.badge_doctors_subtitle }}
+                    </span>
+                    <form method="get" class="d-flex gap-2">
+                        <input type="hidden" name="tab" value="medicos">
+                        <input type="text" name="q_medico" id="search-medico" class="form-control form-control-sm" placeholder="{{ txt.search_doctor }}" value="{{ q_medico }}" style="min-width: 260px;" autocomplete="off">
+                        <button type="submit" class="btn btn-success btn-sm px-3"><i class="fa-solid fa-magnifying-glass"></i></button>
+                        {% if q_medico %}
+                        <a href="/?tab=medicos" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-xmark"></i></a>
+                        {% endif %}
+                    </form>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped table-bordered table-custom align-middle mb-0" id="tabla-medicos">
+                        <thead>
+                            <tr>
+                                <th>{{ txt.col_id }}</th>
+                                <th>{{ txt.col_med_license }}</th>
+                                <th>{{ txt.col_doc1 }}</th>
+                                <th>{{ txt.col_doc2 }}</th>
+                                <th>{{ txt.col_med_name }}</th>
+                                <th>{{ txt.col_med_spec }}</th>
+                                <th>{{ txt.col_med_contact }}</th>
+                                <th>{{ txt.col_med_email }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in medicos %}
+                            <tr>
+                                <td class="text-muted fw-bold">{{ m.id }}</td>
+                                <td>
+                                    <span class="badge bg-primary">{{ m.matricula_nacional }}</span>
+                                    {% if m.matricula_provincial %}
+                                    <span class="badge bg-secondary">{{ m.matricula_provincial }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="font-monospace fw-bold">{{ m.dni }}</td>
+                                <td class="font-monospace text-primary">{{ m.cuil }}</td>
+                                <td class="fw-semibold">{{ m.apellido }}, {{ m.nombre }}</td>
+                                <td><span class="badge bg-info text-dark">{{ m.especialidad }}</span></td>
+                                <td class="font-monospace">{{ m.telefono_celular }}</td>
+                                <td class="small">{{ m.email }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="8" class="text-center py-4 text-muted">
+                                    <i class="fa-solid fa-user-doctor fs-2 mb-2 d-block"></i>
+                                    {{ txt.empty_doctors }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- MODAL FICHA CLÍNICA -->
+<div class="modal fade" id="modalPaciente" tabindex="-1" aria-labelledby="modalPacienteLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title" id="modalPacienteLabel"><i class="fa-solid fa-notes-medical text-info me-2"></i> {{ txt.modal_view_title }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4" id="modal-paciente-body">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary btn-sm px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i> {{ txt.btn_close }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL ALTA / EDICIÓN PACIENTE -->
+<div class="modal fade" id="modalPacienteForm" tabindex="-1" aria-labelledby="modalPacienteFormLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalPacienteFormLabel">
+                    <i class="fa-solid fa-user-pen me-2"></i> <span id="form-paciente-title">{{ txt.modal_new_title }}</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="formPaciente" onsubmit="guardarPaciente(event)">
+                {% csrf_token %}
+                <input type="hidden" name="patient_id" id="paciente_id" value="">
+                <div class="modal-body p-4">
+                    <div id="form-error-alert" class="alert alert-danger d-none mb-3"></div>
+                    
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_firstname }}</label>
+                            <input type="text" class="form-control" name="first_name" id="input_nombre" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_lastname }}</label>
+                            <input type="text" class="form-control" name="last_name" id="input_apellido" required>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-muted">{{ txt.col_doc1 }} *</label>
+                            <input type="text" class="form-control font-monospace" name="doc_primary" id="input_dni" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-muted">{{ txt.col_doc2 }}</label>
+                            <input type="text" class="form-control font-monospace" name="doc_secondary" id="input_cuil">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_dob }}</label>
+                            <input type="date" class="form-control" name="dob" id="input_fecha_nacimiento">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_phone }}</label>
+                            <input type="text" class="form-control font-monospace" name="phone" id="input_telefono_celular">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_email }}</label>
+                            <input type="email" class="form-control" name="email" id="input_email">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_address }}</label>
+                            <input type="text" class="form-control" name="address" id="input_direccion">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_city }}</label>
+                            <input type="text" class="form-control" name="city" id="input_localidad">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_state }}</label>
+                            <input type="text" class="form-control" name="state" id="input_provincia">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_insurance }}</label>
+                            <input type="text" class="form-control" name="insurance" id="input_obra_social">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_insurance_num }}</label>
+                            <input type="text" class="form-control font-monospace" name="insurance_number" id="input_numero_afiliado">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_doctor }}</label>
+                            <select class="form-select" name="doctor_id" id="input_medico_id">
+                                <option value="">-- {% if HMS_COUNTRY == 'US' %}No physician assigned{% elif HMS_COUNTRY == 'BR' %}Sem médico atribuído{% else %}Sin médico asignado{% endif %} --</option>
+                                {% for m in todos_medicos %}
+                                <option value="{{ m.id }}">Dr/a. {{ m.apellido }}, {{ m.nombre }} ({{ m.especialidad.nombre }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_diagnosis }}</label>
+                            <input type="text" class="form-control" name="diagnosis" id="input_diagnostico_clinico">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_notes }}</label>
+                            <textarea class="form-control" name="notes" id="input_historia_clinica" rows="3"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">{{ txt.btn_cancel }}</button>
+                    <button type="submit" class="btn btn-primary btn-sm px-4 fw-semibold" id="btn-submit-paciente">
+                        <i class="fa-solid fa-floppy-disk me-1"></i> {{ txt.btn_save }}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CONFIRMAR ELIMINACIÓN -->
+<div class="modal fade" id="modalConfirmarEliminar" tabindex="-1" aria-labelledby="modalConfirmarEliminarLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="modalConfirmarEliminarLabel">
+                    <i class="fa-solid fa-triangle-exclamation me-2"></i> {{ txt.confirm_delete_title }}
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="fs-6 mb-3">{{ txt.confirm_delete_desc }}<strong id="eliminar-paciente-nombre" class="text-danger"></strong> (ID: <span id="eliminar-paciente-id" class="font-monospace"></span>)?</p>
+                <div class="alert alert-warning small mb-0">
+                    <i class="fa-solid fa-circle-info me-1"></i>
+                    <strong>{{ txt.uat_failure_hint }}:</strong> {{ txt.uat_failure_desc|safe }}
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">{{ txt.btn_cancel }}</button>
+                <button type="button" class="btn btn-danger btn-sm px-3 fw-semibold" id="btn-confirmar-eliminar" onclick="ejecutarEliminarPaciente()">
+                    <i class="fa-solid fa-trash me-1"></i> {{ txt.btn_delete }}
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const TXT = {
+        newPatient: "{{ txt.modal_new_title|escapejs }}",
+        editPatient: "{{ txt.modal_edit_title|escapejs }}",
+        saving: "{{ txt.btn_save|escapejs }}...",
+        deleting: "{{ txt.btn_delete|escapejs }}...",
+        saveBtn: "{{ txt.btn_save|escapejs }}",
+        deleteBtn: "{{ txt.btn_delete|escapejs }}",
+        defaultCity: "{% if HMS_COUNTRY == 'US' %}New York{% elif HMS_COUNTRY == 'BR' %}São Paulo{% else %}CABA{% endif %}",
+        defaultState: "{% if HMS_COUNTRY == 'US' %}NY{% elif HMS_COUNTRY == 'BR' %}SP{% else %}Buenos Aires{% endif %}",
+        colDoc1: "{{ txt.col_doc1|escapejs }}",
+        colDoc2: "{{ txt.col_doc2|escapejs }}",
+        dob: "{{ txt.field_dob|escapejs }}",
+        phone: "{{ txt.field_phone|escapejs }}",
+        email: "{{ txt.field_email|escapejs }}",
+        address: "{{ txt.field_address|escapejs }}",
+        insurance: "{{ txt.field_insurance|escapejs }}",
+        notes: "{{ txt.field_notes|escapejs }}",
+        diagnosis: "{{ txt.field_diagnosis|escapejs }}",
+    };
+
+    let deleteTargetId = null;
+
+    function verFichaPaciente(id) {
+        const modal = new bootstrap.Modal(document.getElementById('modalPaciente'));
+        const body = document.getElementById('modal-paciente-body');
+        body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted">...</p></div>';
+        modal.show();
+
+        fetch('/api/patient/' + id + '/?_t=' + Date.now(), { cache: 'no-store' })
+            .then(res => res.json())
+            .then(data => {
+                const fullName = data.last_name + ', ' + data.first_name;
+                const doc1 = data.doc_primary || '';
+                const doc2 = data.doc_secondary || '';
+                const dob = data.date_of_birth || '';
+                const phone = data.phone || '';
+                const email = data.email || '';
+                const address = (data.address || '') + ' (' + (data.city || '') + ', ' + (data.state || '') + ')';
+                const insurance = data.insurance_provider || '';
+                const insuranceNum = data.insurance_number || '';
+                const diagnosis = data.diagnosis || '';
+                const notes = data.clinical_notes || '';
+                const doctor = data.doctor_name || '';
+
+                body.innerHTML = `
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label text-muted small fw-bold mb-0">PACIENTE</label>
+                            <h5 class="fw-bold mb-0 text-dark">${fullName}</h5>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted small fw-bold mb-0">${TXT.colDoc1}</label>
+                            <div class="font-monospace fw-bold fs-6">${doc1}</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted small fw-bold mb-0">${TXT.colDoc2}</label>
+                            <div class="font-monospace fw-bold fs-6 text-primary">${doc2}</div>
+                        </div>
+
+                        <hr class="my-2">
+
+                        <div class="col-md-4">
+                            <label class="form-label text-muted small fw-bold mb-0">${TXT.dob}</label>
+                            <div>${dob}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label text-muted small fw-bold mb-0">${TXT.phone}</label>
+                            <div class="font-monospace">${phone}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label text-muted small fw-bold mb-0">${TXT.email}</label>
+                            <div>${email}</div>
+                        </div>
+
+                        <div class="col-md-8">
+                            <label class="form-label text-muted small fw-bold mb-0">${TXT.address}</label>
+                            <div>${address}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label text-muted small fw-bold mb-0">${TXT.insurance}</label>
+                            <div><span class="badge bg-light text-dark border">${insurance}</span> <span class="font-monospace small">#${insuranceNum}</span></div>
+                        </div>
+
+                        <div class="col-12 mt-3">
+                            <div class="p-3 bg-light rounded border">
+                                <label class="form-label text-danger small fw-bold mb-1"><i class="fa-solid fa-lock me-1"></i> ${TXT.notes} & ${TXT.diagnosis}</label>
+                                <h6 class="fw-bold text-dark mt-1">${diagnosis}</h6>
+                                <p class="mb-0 text-muted small">${notes}</p>
+                                <div class="mt-2 text-muted small"><strong>Médico:</strong> ${doctor}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            })
+            .catch(err => {
+                body.innerHTML = '<div class="alert alert-danger">Error al cargar los datos.</div>';
+            });
+    }
+
+    function nuevoPaciente() {
+        const form = document.getElementById('formPaciente');
+        form.reset();
+        document.getElementById('paciente_id').value = '';
+        document.getElementById('form-paciente-title').innerText = TXT.newPatient;
+        document.getElementById('form-error-alert').classList.add('d-none');
+        document.getElementById('input_localidad').value = TXT.defaultCity;
+        document.getElementById('input_provincia').value = TXT.defaultState;
+        const modal = new bootstrap.Modal(document.getElementById('modalPacienteForm'));
+        modal.show();
+    }
+
+    function editarPaciente(id) {
+        const form = document.getElementById('formPaciente');
+        form.reset();
+        document.getElementById('form-error-alert').classList.add('d-none');
+        document.getElementById('form-paciente-title').innerText = `${TXT.editPatient} #${id}`;
+        document.getElementById('paciente_id').value = id;
+
+        const modal = new bootstrap.Modal(document.getElementById('modalPacienteForm'));
+        modal.show();
+
+        fetch('/api/patient/' + id + '/?_t=' + Date.now(), { cache: 'no-store' })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('input_nombre').value = data.first_name || '';
+                document.getElementById('input_apellido').value = data.last_name || '';
+                document.getElementById('input_dni').value = data.doc_primary || '';
+                document.getElementById('input_cuil').value = data.doc_secondary || '';
+                document.getElementById('input_fecha_nacimiento').value = data.date_of_birth_iso || '';
+                document.getElementById('input_telefono_celular').value = data.phone || '';
+                document.getElementById('input_email').value = data.email || '';
+                document.getElementById('input_direccion').value = data.address || '';
+                document.getElementById('input_localidad').value = data.city || TXT.defaultCity;
+                document.getElementById('input_provincia').value = data.state || TXT.defaultState;
+                document.getElementById('input_obra_social').value = data.insurance_provider || '';
+                document.getElementById('input_numero_afiliado').value = data.insurance_number || '';
+                document.getElementById('input_diagnostico_clinico').value = data.diagnosis || '';
+                document.getElementById('input_historia_clinica').value = data.clinical_notes || '';
+                document.getElementById('input_medico_id').value = data.doctor_id || '';
+            })
+            .catch(err => {
+                document.getElementById('form-error-alert').innerText = 'Error al cargar los datos del paciente.';
+                document.getElementById('form-error-alert').classList.remove('d-none');
+            });
+    }
+
+    function guardarPaciente(event) {
+        event.preventDefault();
+        const form = document.getElementById('formPaciente');
+        const btn = document.getElementById('btn-submit-paciente');
+        const alertBox = document.getElementById('form-error-alert');
+        alertBox.classList.add('d-none');
+        
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> ' + TXT.saving;
+
+        const formData = new FormData(form);
+        fetch('/api/patient/save/', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json().then(data => ({ status: res.status, body: data })))
+        .then(res => {
+            if (res.status === 200 && res.body.status === 'ok') {
+                window.location.href = '/?tab=pacientes';
+            } else {
+                alertBox.innerText = res.body.message || 'Error al guardar los datos.';
+                alertBox.classList.remove('d-none');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-floppy-disk me-1"></i> ' + TXT.saveBtn;
+            }
+        })
+        .catch(err => {
+            alertBox.innerText = 'Error de conexión con el servidor.';
+            alertBox.classList.remove('d-none');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-floppy-disk me-1"></i> ' + TXT.saveBtn;
+        });
+    }
+
+    function confirmarEliminarPaciente(id, nombreCompleto) {
+        deleteTargetId = id;
+        document.getElementById('eliminar-paciente-id').innerText = id;
+        document.getElementById('eliminar-paciente-nombre').innerText = nombreCompleto;
+        const modal = new bootstrap.Modal(document.getElementById('modalConfirmarEliminar'));
+        modal.show();
+    }
+
+    function ejecutarEliminarPaciente() {
+        if (!deleteTargetId) return;
+        const btn = document.getElementById('btn-confirmar-eliminar');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> ' + TXT.deleting;
+
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', csrfToken);
+
+        fetch(`/api/patient/${deleteTargetId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                window.location.href = '/?tab=pacientes';
+            } else {
+                alert('Error al eliminar: ' + (data.message || 'Desconocido'));
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-trash me-1"></i> ' + TXT.deleteBtn;
+            }
+        })
+        .catch(err => {
+            alert('Error al conectar con el servidor.');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-trash me-1"></i> ' + TXT.deleteBtn;
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Sincronizar solapa activa con la URL al cambiar de pestaña
+        const tabButtons = document.querySelectorAll('button[data-bs-toggle="tab"]');
+        tabButtons.forEach(btn => {
+            btn.addEventListener('shown.bs.tab', (e) => {
+                const targetId = e.target.getAttribute('data-bs-target');
+                const tabName = (targetId === '#medicos-pane') ? 'medicos' : 'pacientes';
+                const url = new URL(window.location.href);
+                url.searchParams.set('tab', tabName);
+                window.history.replaceState({}, '', url.toString());
+            });
+        });
+
+        // Búsqueda instantánea en cliente para pacientes
+        const inputPac = document.getElementById('search-paciente');
+        if (inputPac) {
+            inputPac.addEventListener('input', function() {
+                const filter = this.value.toLowerCase().trim();
+                const rows = document.querySelectorAll('#tabla-pacientes tbody tr');
+                rows.forEach(row => {
+                    const text = row.innerText.toLowerCase();
+                    row.style.display = text.includes(filter) ? '' : 'none';
+                });
+            });
+        }
+
+        // Búsqueda instantánea en cliente para médicos
+        const inputMed = document.getElementById('search-medico');
+        if (inputMed) {
+            inputMed.addEventListener('input', function() {
+                const filter = this.value.toLowerCase().trim();
+                const rows = document.querySelectorAll('#tabla-medicos tbody tr');
+                rows.forEach(row => {
+                    const text = row.innerText.toLowerCase();
+                    row.style.display = text.includes(filter) ? '' : 'none';
+                });
+            });
+        }
+    });
+</script>
+{% endblock %}
