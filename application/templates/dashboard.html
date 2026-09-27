@@ -149,12 +149,16 @@
                                 <td class="small">
                                     {{ p.direccion }}, {{ p.localidad }}
                                     {% if p.codigo_postal %}
-                                    <span class="badge bg-light text-secondary border font-monospace ms-1">{{ p.codigo_postal }}</span>
+                                    <span class="badge bg-secondary font-monospace ms-1">{% if HMS_COUNTRY == 'US' %}ZIP: {{ p.codigo_postal }}{% elif HMS_COUNTRY == 'BR' %}CEP: {{ p.codigo_postal }}{% else %}CP: {{ p.codigo_postal }}{% endif %}</span>
                                     {% endif %}
                                 </td>
                                 <td class="text-nowrap">
-                                    <span class="badge bg-light text-dark border">{{ p.obra_social }}</span><br>
+                                    {% if p.obra_social %}
+                                    <span class="badge bg-primary">{{ p.obra_social }}</span><br>
+                                    {% endif %}
+                                    {% if p.numero_afiliado %}
                                     <span class="small text-muted font-monospace">{{ p.numero_afiliado }}</span>
+                                    {% endif %}
                                 </td>
                                 <td><span class="small" title="{{ p.diagnostico_clinico }}">{{ p.diagnostico_clinico|truncatechars:35 }}</span></td>
                                 <td class="text-center text-nowrap">
@@ -429,6 +433,7 @@
         email: "{{ txt.field_email|escapejs }}",
         address: "{{ txt.field_address|escapejs }}",
         postal: "{{ txt.field_postal|escapejs }}",
+        postalAbbr: "{% if HMS_COUNTRY == 'US' %}ZIP{% elif HMS_COUNTRY == 'BR' %}CEP{% else %}CP{% endif %}",
         insurance: "{{ txt.field_insurance|escapejs }}",
         notes: "{{ txt.field_notes|escapejs }}",
         diagnosis: "{{ txt.field_diagnosis|escapejs }}",
@@ -453,8 +458,8 @@
                 const dob = data.date_of_birth || '';
                 const phone = data.phone || '';
                 const email = data.email || '';
-                const postalPart = data.postal_code ? ' - ' + (TXT.postal || 'CP') + ': ' + data.postal_code : '';
-                const address = (data.address || '') + ', ' + (data.city || '') + ' (' + (data.state || '') + postalPart + ')';
+                const postalPart = data.postal_code ? ' <span class="badge bg-secondary font-monospace ms-1">' + (TXT.postalAbbr || 'CP') + ': ' + data.postal_code + '</span>' : '';
+                const address = (data.address || '') + ', ' + (data.city || '') + ' (' + (data.state || '') + ')' + postalPart;
                 const insurance = data.insurance_provider || '';
                 const insuranceNum = data.insurance_number || '';
                 const diagnosis = data.diagnosis || '';
@@ -498,7 +503,7 @@
                         <div class="col-md-7">
                             <label class="form-label text-muted small fw-bold mb-0">${TXT.insurance}</label>
                             <div class="d-flex align-items-center flex-wrap gap-1">
-                                <span class="badge bg-light text-dark border fs-6 fw-normal">${insurance}</span>
+                                <span class="badge bg-primary fs-6">${insurance}</span>
                                 <span class="font-monospace text-nowrap fw-semibold ms-1">#${insuranceNum}</span>
                             </div>
                         </div>
