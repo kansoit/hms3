@@ -79,12 +79,12 @@
         <ul class="nav nav-tabs card-header-tabs" id="demoTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link {% if active_tab != 'medicos' %}active{% else %}text-muted{% endif %} fw-semibold px-4 py-2" id="pacientes-tab" data-bs-toggle="tab" data-bs-target="#pacientes-pane" type="button" role="tab" aria-controls="pacientes-pane" aria-selected="{% if active_tab != 'medicos' %}true{% else %}false{% endif %}">
-                    <i class="fa-solid fa-bed-pulse text-primary me-2"></i> {{ txt.tab_patients }} <span class="badge rounded-pill bg-primary bg-opacity-10 text-primary ms-1 font-monospace">{{ total_pacientes }}</span>
+                    <i class="fa-solid fa-bed-pulse text-primary me-2"></i> {{ txt.tab_patients }}
                 </button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link {% if active_tab == 'medicos' %}active{% else %}text-muted{% endif %} fw-semibold px-4 py-2" id="medicos-tab" data-bs-toggle="tab" data-bs-target="#medicos-pane" type="button" role="tab" aria-controls="medicos-pane" aria-selected="{% if active_tab == 'medicos' %}true{% else %}false{% endif %}">
-                    <i class="fa-solid fa-stethoscope text-success me-2"></i> {{ txt.tab_doctors }} <span class="badge rounded-pill bg-success bg-opacity-10 text-success ms-1 font-monospace">{{ total_medicos }}</span>
+                    <i class="fa-solid fa-stethoscope text-success me-2"></i> {{ txt.tab_doctors }}
                 </button>
             </li>
         </ul>
