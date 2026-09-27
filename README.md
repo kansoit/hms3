@@ -2,7 +2,8 @@
 ### Delphix Continuous Data , Continuous Compliance & Data Control Tower Demonstration Platform
 
 [![Delphix Continuous Compliance](https://img.shields.io/badge/Delphix-Continuous%20Compliance-blue.svg)](https://www.delphix.com)
-[![Delphix Data Virtualization](https://img.shields.io/badge/Delphix-Data%20Virtualization-green.svg)](https://www.delphix.com)
+[![Delphix Continuous Data](https://img.shields.io/badge/Delphix-Continuous%20Data-green.svg)](https://www.delphix.com)
+[![Delphix Data Control Tower](https://img.shields.io/badge/Delphix-Data%20Control%20Tower-orange.svg)](https://www.delphix.com)
 [![Microsoft SQL Server](https://img.shields.io/badge/Database-SQL%20Server%202019%2F2022-red.svg)](https://www.microsoft.com/sql-server)
 [![Python 3.11 / Django 5](https://img.shields.io/badge/Backend-Django%205%20%7C%20Python%203.11-092E20.svg)](https://www.djangoproject.com)
 [![Podman / Docker](https://img.shields.io/badge/Container-Podman%20%2F%20Docker-892CA0.svg)](https://podman.io)
@@ -15,19 +16,22 @@
 
 ## 📋 Executive Overview
 
-**HMS 3.0** is a hospital management reference application built specifically for **Presales Engineers, Solution Architects, and Technical Consultants** demonstrating the power of the **Delphix DevOps Data Platform** against **Microsoft SQL Server**.
+**HMS 3.0** is a hospital management reference application built specifically for **Presales Engineers, Solution Architects, and Technical Consultants** demonstrating the capabilities of **Perforce Delphix Continuous Data**, **Perforce Delphix Continuous Compliance**, and **Perforce Data Control Tower (DCT)** against **Microsoft SQL Server**.
 
-It showcases end-to-end data lifecycle capabilities:
+> [!NOTE]
+> **Demonstration Architecture Notice**: In HMS 3.0, "Production" and "Test" describe simulated data lifecycle roles used for demonstration purposes. All patient, physician, and clinical records are synthetically generated to model realistic regulated data patterns; no real patient data is included.
+
+It showcases key end-to-end data lifecycle capabilities:
 1. **Automated Sensitive Data Discovery & Profiling**: Native table and column naming conventions tailored for Delphix Profilers across three international regulatory jurisdictions.
-2. **Deterministic & Referential Data Masking**: Replaces Personally Identifiable Information (PII) and Protected Health Information (PHI) with synthetically valid, referentially intact masked equivalents.
-3. **Instant Virtual Database (VDB) Provisioning**: Delivers near-instant, zero-storage-footprint virtual copies of SQL Server databases for development and test (UAT/QA).
-4. **Self-Service VDB Lifecycle (Rewind / Refresh)**: Allows instant rollback of accidental data deletion or corruption in seconds directly via Delphix Data Control Tower (DCT).
+2. **Consistent & Deterministic Data Masking**: Replaces Personally Identifiable Information (PII) and Protected Health Information (PHI) with synthetic equivalents while preserving referential consistency across related tables when deterministic algorithms are configured.
+3. **Storage-Efficient Virtual Database (VDB) Provisioning**: Delivers rapid, space-efficient virtual copies of SQL Server databases for development and test (UAT/QA) without duplicating physical storage blocks.
+4. **Self-Service VDB Lifecycle (Rewind / Refresh / Bookmarks)**: Demonstrates point-in-time recovery (Rewind) and baseline resets directly via Perforce Data Control Tower (DCT) or the Continuous Data Engine.
 
 ---
 
 ## 🌍 Multi-Country Regulatory Architecture
 
-HMS 3.0 supports **three independent country modes**, dynamically selected via the `HMS_COUNTRY` and `DB_NAME` environment variables. The application adapts its database schema, table names, sensitive column identifiers, UI language, clinical terminologies, and regulatory compliance notices accordingly.
+HMS 3.0 supports **three independent country modes**, dynamically selected via the `HMS_COUNTRY` and `DB_NAME` environment variables. The application adapts its database schema, table names, sensitive column identifiers, UI language, clinical terminologies, and regulatory notices accordingly.
 
 ```
                       ┌──────────────────────────────────────┐
@@ -49,38 +53,57 @@ HMS 3.0 supports **three independent country modes**, dynamically selected via t
 
 | Attribute / Field | 🇦🇷 Argentina (AR) | 🇧🇷 Brazil (BR) | 🇺🇸 United States (US) |
 | :--- | :--- | :--- | :--- |
-| **Regulatory Law** | Ley 25.326 (Protección Datos) | LGPD (Lei 13.709/2018) | HIPAA (45 CFR § 164.514) |
-| **Production Database** | `hms3_ar` | `hms3_br` | `hms3_us` |
+| **Regulatory Context** | Ley 25.326 (Protección Datos)* | LGPD (Lei 13.709/2018)* | HIPAA (45 CFR § 164.514)* |
+| **Simulated Production DB** | `hms3_ar` | `hms3_br` | `hms3_us` |
 | **Test Virtual Database** | `vhms3_ar` | `vhms3_br` | `vhms3_us` |
 | **Patients Table** | `dbo.PACIENTES` | `dbo.PACIENTES` | `dbo.PATIENTS` |
 | **Doctors Table** | `dbo.MEDICOS` | `dbo.MEDICOS` | `dbo.DOCTORS` |
 | **Specialties Table** | `dbo.ESPECIALIDADES` | `dbo.ESPECIALIDADES` | `dbo.SPECIALTIES` |
-| **Primary National ID** | `DNI` (Documento Nacional) | `CPF` (Cadastro de Pessoas Físicas) | `SSN` (Social Security Number) |
-| **Secondary National ID**| `CUIL` (Módulo 11) | `RG` (Registro Geral) | `STATE_ID` (Driver License) |
+| **App Document 1 (`doc_primary` / `col_doc1`)** | `DNI` (Documento Nacional) | `RG` (Registro Geral) | `STATE_ID` (State Driver License / ID) |
+| **App Document 2 (`doc_secondary` / `col_doc2`)** | `CUIL` (Identificación Laboral) | `CPF` (Cadastro de Pessoas Físicas) | `SSN` (Social Security Number) |
+| **Primary Federal / Tax Identifier** | `CUIL` (Módulo 11) | `CPF` (Receita Federal) | `SSN` (Social Security Administration) |
 | **Medical License ID** | `MATRICULA_NACIONAL` (MN) | `CRM` (Conselho Regional) | `NPI` (National Provider Identifier) |
+| **Street Address** | `DIRECCION` | `ENDERECO` | `ADDRESS` |
+| **City / Locality** | `LOCALIDAD` | `CIDADE` | `CITY` |
+| **Province / State** | `PROVINCIA` (Full name, 60) | `ESTADO` (UF code, 10) | `STATE` (State code, 10) |
 | **Postal Code** | `CODIGO_POSTAL` (CP) | `CEP` | `ZIP_CODE` |
-| **Health Insurance** | `OBRA_SOCIAL` / `NUMERO_AFILIADO` | `CONVENIO` / `NUMERO_CARTEIRINHA`| `INSURANCE_PROVIDER` / `POLICY_NUMBER` |
-| **Clinical Notes (PHI)** | `HISTORIA_CLINICA` | `PRONTUARIO` | `CLINICAL_NOTES` |
+| **Health Insurance & Policy** | `OBRA_SOCIAL` / `NUMERO_AFILIADO` | `CONVENIO` / `NUMERO_CARTEIRINHA`| `INSURANCE_PROVIDER` / `POLICY_NUMBER` |
+| **Clinical Diagnosis** | `DIAGNOSTICO_CLINICO` (150) | `DIAGNOSTICO` (150) | `DIAGNOSIS` (150) |
+| **Clinical Notes / Sensitive Health Data** | `HISTORIA_CLINICA` | `PRONTUARIO` | `CLINICAL_NOTES` (PHI) |
+
+*\* Regulatory references describe representative data patterns modeled by the application; HMS 3.0 does not certify formal legal compliance.*
 
 ---
 
-## 🎯 Native Delphix Profiler Discovery Architecture
+## 🏛️ Model Parity & Architectural Consistency
 
-Delphix Continuous Compliance profilers discover sensitive columns using regular expression pattern matching on column and table metadata. 
+HMS 3.0 balances regional authenticity with technical uniformity:
+
+* **Same Business Domain**: All three variants represent the same underlying healthcare domain (patients, medical staff, dynamic specialties, insurance coverage, and clinical evolutions).
+* **Localized Physical Schemas**: Table and column names remain in the native language and format of each region, allowing Delphix profilers to detect realistic patterns without generic abstractions.
+* **Harmonized Field Specifications**: Equivalent business attributes have been aligned across regions (First and Last Names: `VARCHAR(60)`, Street Address: `VARCHAR(120)`, Locality/City: `VARCHAR(60)`, Phone: `VARCHAR(25)`, Email: `VARCHAR(100)`, Diagnosis: `VARCHAR(150)`, Clinical Notes: `TEXT/NVARCHAR(MAX)`).
+* **Justified Regional Differences**: Legitimate local distinctions are preserved (e.g. Argentine province full names vs 2-character Brazilian UF and US State codes; numeric DNI length vs formatted CPF/SSN lengths).
+* **Minimal Patient Creation**: For demonstration convenience, only **First Name** and **Last Name** are required when manually adding a patient. Other database fields (document identifiers, default birth date `1990-01-01`) can be completed automatically by HMS 3.0.
+
+---
+
+## 🎯 Delphix Profiler Discovery Architecture
+
+Delphix Continuous Compliance profiling can classify sensitive data using metadata/path matching, data types, regular expressions, value lists, and data-level classifiers (such as Automated Sensitive Data Discovery - ASDD), depending on the selected profile set and engine version.
 
 ### Why Native Schemas Matter for Presales
-In traditional demonstration applications, column names often fail to trigger out-of-the-box Delphix Profiler rules (e.g. naming a Brazilian CPF column `national_id_number` or `doc_2`). 
+In demonstration environments, generic column names often fail to trigger standard profiling rules (e.g. naming a Brazilian CPF column `national_id_number` or `doc_2`). 
 
 HMS 3.0 uses **native uppercase schemas** for each country:
-* **Brazil**: Columns `CPF`, `RG`, and `CRM` immediately trigger Delphix built-in or custom Brazilian profilers.
-* **USA**: Columns `SSN`, `STATE_ID`, `NPI`, `ZIP_CODE`, and `CLINICAL_NOTES` trigger 100% of Delphix HIPAA and US PII built-in profiling rules without requiring manual profiling adjustments.
-* **Argentina**: Columns `DNI` and `CUIL` trigger Argentine custom plugin profilers (`AR_DNI` and `AR_CUILT`) and/or `AR_CUIT` in standard Perforce Profile Sets.
+* **Brazil**: Columns `CPF`, `RG`, and `CRM` are designed to trigger common built-in or custom Brazilian profiling classifiers.
+* **USA**: Columns `SSN`, `STATE_ID`, `NPI`, `ZIP_CODE`, and `CLINICAL_NOTES` provide representative metadata designed to align with common Delphix built-in US PII and HIPAA profiling classifiers.
+* **Argentina**: Columns `DNI` and `CUIL` align with standard Argentine custom plugins or profile expressions (`AR_DNI`, `AR_CUIL`/`AR_CUIT`) in Perforce Profile Sets.
 
 ---
 
-## ⚡ Zero-Cache Multi-Environment Architecture
+## ⚡ Cache-Controlled Multi-Environment Architecture
 
-A critical challenge during live demonstrations is comparing **Production (Port 8012)** against **Masked Test VDB (Port 8013)** simultaneously. HMS 3.0 solves all browser caching and cookie collision issues:
+A key challenge during live demonstrations is comparing **Simulated Production (Port 8012)** against **Masked Test VDB (Port 8013)** simultaneously. HMS 3.0 addresses browser caching and session isolation:
 
 1. **Environment Cookie Isolation**:
    * Session cookies and CSRF tokens are dynamically suffixed with the active environment:
@@ -88,37 +111,35 @@ A critical challenge during live demonstrations is comparing **Production (Port 
      SESSION_COOKIE_NAME = f'hms3_session_{HMS_ENV}'
      CSRF_COOKIE_NAME = f'hms3_csrf_{HMS_ENV}'
      ```
-   * This permits opening Production and Test VDB in **adjacent tabs of the exact same browser window** without session collisions or CSRF invalidations.
+   * This permits opening Production and Test VDB in **adjacent tabs of the same browser window** without cookie collisions.
 
-2. **Strict HTTP Anti-Cache Middleware (`NoCacheMiddleware`)**:
-   * Every HTTP response emits strict anti-caching headers:
-     ```http
-     Cache-Control: no-cache, no-store, must-revalidate, max-age=0, post-check=0, pre-check=0
-     Pragma: no-cache
-     Expires: 0
-     X-Accel-Expires: 0
-     ```
+2. **HTTP Anti-Cache Headers (`NoCacheMiddleware`)**:
+   * Every HTTP response emits strict anti-caching headers (`no-cache, no-store, must-revalidate`).
 
-3. **Client-Side Cache Bypass**:
-   * A prominent **`[🔄 Refresh Data]`** button in the top navigation bar forces a clean browser reload appending a dynamic timestamp query (`?_nocache=<timestamp>`), bypassing modern browser Back-Forward Cache (bfcache).
+3. **Client-Side Freshness Bypass**:
+   * The **`[🔄 Refresh Data]`** button in the top navigation bar forces a clean reload appending a cache-busting timestamp parameter (`?_nocache=<timestamp>`).
 
-4. **Visual Environment Banners**:
-   * **Production (Port 8012)**: Crimson red banner with warning icons and legal notice:
+4. **Safe Dynamic Data Rendering**:
+   * Dynamic patient and clinical values are populated into the DOM as plain text rather than interpreted as raw HTML, ensuring resilient presentation of arbitrary clinical inputs.
+
+5. **Demo Instrumentation Banners**:
+   * **Production (Port 8012)**: Crimson red banner indicating simulated production:
      `PRODUCTION ENVIRONMENT: REAL SENSITIVE DATA | DB: hms3_us | Port: 8012 | HIPAA Protected Health Information (PHI)`
-     *(Localized per country, e.g. `ENTORNO PRODUCCIÓN: DATOS REALES SENSIBLES` for Argentina)*
-   * **Test VDB (Port 8013)**: Forest green banner with shield icon indicating compliant masked data:
+   * **Test VDB (Port 8013)**: Forest green banner indicating compliant masked data:
      `NON-PRODUCTION ENVIRONMENT: MASKED DATA | DB: vhms3_us | Port: 8013 | HIPAA Protected Health Information (PHI)`
-     *(Localized per country, e.g. `ENTORNO NO PRODUCCIÓN: DATOS ENMASCARADOS` for Argentina)*
-   * **Live Millisecond Clock**: Millisecond-precision server clock in the navbar confirms data was dynamically queried from SQL Server without stale rendering.
+   * **Visible Instrumentation**: Active database host, port, database name, and container port are intentionally displayed in the UI as demo instrumentation to verify topology during presentations.
+   * **Live Server Clock**: Provides a visible freshness and active request indicator in the navbar during side-by-side demonstrations.
 
 ---
 
 ## 📦 Container Image Building
 
-HMS 3.0 uses an optimized multi-stage `Dockerfile.django` based on `python:3.11-slim-bookworm` with Microsoft's official ODBC Driver 18 for SQL Server.
+HMS 3.0 uses an optimized multi-stage build in `Dockerfile.django`:
+* **Build Stage**: Based on `python:3.11-bookworm` with compilation tools and pre-built Python wheels.
+* **Runtime Stage**: Based on `python:3.11-slim-bookworm` with Microsoft's official ODBC Driver 18 for SQL Server.
 
 ### Build the Image
-You can build the container image directly using the built-in CLI manager (which automatically detects Podman or Docker):
+Build the container image using the built-in CLI manager (which automatically detects Podman or Docker):
 ```bash
 ./hms-ctl.py build
 ```
@@ -147,7 +168,7 @@ HMS 3.0 provides pre-configured template files (`.example`) for each environment
 | `.env-prod-us.example` | Production | USA (`US`) | `8012` | `hms3_us` | `.env-prod-us` |
 | `.env-test-us.example` | Test VDB | USA (`US`) | `8013` | `vhms3_us` | `.env-test-us` |
 
-> **Security Notice**: All real `.env*` configuration files containing active database credentials are strictly excluded via `.gitignore`. Copy the appropriate `.example` file to its corresponding `.env-*` filename and configure your local SQL Server connection credentials.
+> **Security Notice**: All real `.env*` configuration files containing active database credentials are strictly excluded via `.gitignore`. Copy the appropriate `.example` file to its corresponding `.env-*` filename and configure your local SQL Server connection credentials. The placeholder IPs (such as `10.0.0.10`) and credentials in `.example` files are illustrative and do not represent real infrastructure.
 
 ### Environment Variable Reference
 
@@ -175,7 +196,7 @@ DB_PASSWORD=YourStrongPasswordHere  # SQL Server Password
 
 ## 🚀 Container Orchestration CLI (`hms-ctl.py`)
 
-HMS 3.0 includes an all-in-one Python CLI controller (**`hms-ctl.py`**) that supports both **Podman** and **Docker** automatically with zero host dependencies (uses Python standard library).
+HMS 3.0 includes an all-in-one Python CLI controller (**`hms-ctl.py`**) that supports both **Podman** and **Docker** using only the Python standard library.
 
 ```bash
 ./hms-ctl.py <command> -e <prod|test> -c <ar|br|us>
@@ -219,33 +240,34 @@ HMS 3.0 includes an all-in-one Python CLI controller (**`hms-ctl.py`**) that sup
 
 ## 🧪 Database Seeding & Synthetic Data Generators
 
-HMS 3.0 includes dedicated Django management commands to populate production databases with realistic, regulatory-compliant synthetic data.
+HMS 3.0 includes dedicated Django management commands to populate databases with realistic synthetic datasets designed to demonstrate common PII/PHI patterns found in regulated environments.
+
+* **Source Dataset**: Synthetically generated but intentionally unmasked, serving as the simulated production baseline.
+* **Test Dataset**: Derived from that source via Delphix Continuous Data virtualization and transformed by Delphix Continuous Compliance masking algorithms.
 
 ### 1. Seeding Argentina (`seed_argentina`)
-* **Identifiers**: Generates valid Argentine DNIs and mathematical Modulo 11 CUILs (`20-XXXXXXXX-X`, `27-XXXXXXXX-X`, `23-XXXXXXXX-X`).
-* **Medical Licensing**: Generates valid Matrícula Nacional (MN) and Provincial (MP).
+* **Identifiers**: Generates realistic Argentine DNIs and checksum-valid Modulo 11 CUILs (`20-XXXXXXXX-X`, `27-XXXXXXXX-X`, `23-XXXXXXXX-X`).
+* **Medical Licensing**: Generates realistic synthetic Matrícula Nacional (MN) and Provincial (MP) values.
 * **Command Syntax**:
   ```bash
-  # Seed Production Argentina (Resets ID sequences to 1):
-  sudo podman exec hms3_prod python manage.py seed_argentina --clean
+  # Prepend sudo only if required by your local Podman configuration
+  podman exec hms3_prod python manage.py seed_argentina --clean
   ```
 
 ### 2. Seeding Brazil (`seed_brazil`)
-* **Identifiers**: Generates official Receita Federal CPFs with 2 check digits verified via Modulo 11 (`XXX.XXX.XXX-XX`), and realistic RGs.
-* **Medical Licensing**: Generates Conselho Regional de Medicina (CRM) with State codes (`CRM/SP`, `CRM/RJ`).
+* **Identifiers**: Generates checksum-valid synthetic CPFs verified via Modulo 11 (`XXX.XXX.XXX-XX`), and realistic RGs.
+* **Medical Licensing**: Generates realistic Conselho Regional de Medicina (CRM) values with State jurisdiction codes (`CRM/SP`, `CRM/RJ`).
 * **Command Syntax**:
   ```bash
-  # Seed Production Brazil (Resets ID sequences to 1):
-  sudo podman exec hms3_prod python manage.py seed_brazil --clean
+  podman exec hms3_prod python manage.py seed_brazil --clean
   ```
 
 ### 3. Seeding USA (`seed_usa`)
-* **Identifiers**: Generates Social Security Numbers (SSN) compliant with Social Security Administration rules (no `000` area, `00` group, `0000` serial, or `666` prefix) formatted as `XXX-XX-XXXX`, plus State IDs.
-* **Medical Licensing**: Generates CMS National Provider Identifiers (NPI) validated with the **Luhn Modulo 10 check digit** algorithm (standard 10-digit NPIs starting with `1` or `2`).
+* **Identifiers**: Generates synthetic SSN-format identifiers excluding known invalid ranges (such as area `000`, `666`, group `00`, or serial `0000`), plus State IDs.
+* **Medical Licensing**: Generates checksum-valid synthetic 10-digit NPI-format values using the **Luhn Modulo 10 check digit** algorithm (standard 10-digit NPIs starting with `1` or `2`).
 * **Command Syntax**:
   ```bash
-  # Seed Production USA (Resets ID sequences to 1):
-  sudo podman exec hms3_prod python manage.py seed_usa --clean
+  podman exec hms3_prod python manage.py seed_usa --clean
   ```
 
 ### Seeding Command Options
@@ -255,10 +277,10 @@ All three seeding commands accept the following options:
 * `--medicos <M>`: Number of physicians to generate (default: `10`).
 
 ### Clinical & Diagnostic Consistency
-All seeders enforce strict clinical logic:
+All seeders enforce clinical consistency:
 * Each patient is assigned an attending physician.
-* The patient's diagnosis and confidential clinical history (`HISTORIA_CLINICA` / `PRONTUARIO` / `CLINICAL_NOTES`) directly match the assigned physician's medical specialty (e.g., Cardiology $\to$ Acute Myocardial Infarction / Hypertension; Pulmonology $\to$ COPD / Bronchial Asthma; Neurology $\to$ Migraine / Epilepsy).
-* Gender consistency is enforced for gender-specific specialties (e.g., Gynecology vs Urology).
+* The patient's diagnosis and clinical notes (`HISTORIA_CLINICA` / `PRONTUARIO` / `CLINICAL_NOTES`) match the assigned physician's medical specialty.
+* Gender consistency is observed for gender-specific specialties (e.g. Gynecology vs Urology).
 
 ---
 
@@ -266,36 +288,36 @@ All seeders enforce strict clinical logic:
 
 This step-by-step walkthrough demonstrates how to deliver an impactful Delphix Continuous Compliance & Data Virtualization presentation following the official Delphix presales methodology:
 
-### Step 1: Deploy Production & Generate Fresh Data
+### Step 1: Deploy Simulated Production & Generate Fresh Data
 ```bash
 # 1. Deploy Production (Port 8012) - Example: Argentina
 ./hms-ctl.py start -e prod -c ar
 
-# 2. Populate fresh, clean records starting at ID 1
-sudo podman exec hms3_prod python manage.py seed_argentina --clean
+# 2. Populate fresh, clean records starting at ID 1 (prepend sudo if required)
+podman exec hms3_prod python manage.py seed_argentina --clean
 ```
-*Show the audience the Production UI at `http://<HOST-IP>:8012/`.* Point out the unmasked DNIs, CUILs, patient names, addresses, and confidential medical histories under the crimson red Production banner.
+*Show the audience the Production UI at `http://<HOST-IP>:8012/`.* Point out the unmasked DNIs, CUILs, patient names, addresses, and clinical notes under the crimson red Production banner.
 
 ### Step 2: Ingest Production (dSource) & Virtualize (VDB Provisioning)
-1. In the **Delphix Engine / Data Control Tower (DCT)**, link the production SQL Server database (`hms3_ar`, `hms3_br`, or `hms3_us`) as a **dSource**.
-2. Run the initial sync (**SnapSync**) to establish the Timeflow baseline.
-3. Instantly provision a **Virtual Database (VDB)** named `vhms3_ar` (or `vhms3_br` / `vhms3_us`) to the non-production target SQL Server environment.
-   * *Highlight to the customer*: The VDB provisions in seconds and consumes near-zero incremental disk storage, completely independent of database size.
+1. In **Perforce Data Control Tower (DCT)** or the **Continuous Data Engine**, link the production SQL Server database (`hms3_ar`, `hms3_br`, or `hms3_us`) as a **dSource**.
+2. Complete the initial synchronization/snapshot according to the configured SQL Server ingestion method to establish the Timeflow baseline.
+3. Provision a **Virtual Database (VDB)** named `vhms3_ar` (or `vhms3_br` / `vhms3_us`) to the non-production target SQL Server environment.
+   * *Highlight to the customer*: VDB provisioning avoids creating a full physical database copy and is typically much faster and more storage-efficient than traditional copy-based provisioning, consuming minimal incremental storage at creation time.
 
 ### Step 3: Profile the Non-Production VDB
-1. Connect the **Delphix Continuous Compliance Engine** to the newly provisioned non-production VDB (`vhms3_ar`).
+1. Connect **Perforce Delphix Continuous Compliance** to the newly provisioned non-production VDB (`vhms3_ar`).
 2. Execute the **Delphix Profiler** directly against the VDB.
-   * *Critical Presales Advantage*: Profiling the virtual copy eliminates all performance overhead, query locking, or compliance exposure on the active production database.
+   * *Critical Presales Advantage*: Running discovery on the non-production VDB rather than directly against the production database avoids putting profiling query overhead, table locks, or compliance exposure onto the simulated production system.
 3. Demonstrate automated discovery:
-   * 🇦🇷 **Argentina**: `DNI`, `CUIL` (matched by `AR_DNI`, `AR_CUILT` and/or `AR_CUIT` in Perforce Profile Sets), `APELLIDO`, `NOMBRE`, `DIRECCION`, `HISTORIA_CLINICA`.
+   * 🇦🇷 **Argentina**: `DNI`, `CUIL` (matched by `AR_DNI`, `AR_CUIL`/`AR_CUIT` in Perforce Profile Sets), `APELLIDO`, `NOMBRE`, `DIRECCION`, `HISTORIA_CLINICA`.
    * 🇧🇷 **Brazil**: `CPF`, `RG`, `CRM`, `SOBRENOME`, `NOME`, `CEP`, `PRONTUARIO`.
    * 🇺🇸 **USA**: `SSN`, `STATE_ID`, `NPI`, `LAST_NAME`, `FIRST_NAME`, `ZIP_CODE`, `CLINICAL_NOTES`.
 
 ### Step 4: Execute In-Place Masking on the VDB
-1. Assign the appropriate algorithms in the Inventory / Rule Set (e.g., `AR_DNI`, `AR_CUILT`, `dlpx-core:Phone Unique`, `First Name`, `Last Name`, `Address`, `Comment / Free Text`).
+1. Assign the appropriate algorithms in the Inventory / Rule Set (e.g. `AR_DNI`, `AR_CUIL`, `dlpx-core:Phone Unique`, `First Name`, `Last Name`, `Address`, `Comment / Free Text`).
 2. Run the Delphix Masking Job **in-place directly on the VDB**.
-   * *Highlight to the customer*: Delphix masks the data in-place on the target environment. Sensitive data never leaves the security perimeter, and referential integrity across related tables is mathematically preserved.
-3. Once the masking job completes, capture a snapshot / bookmark of the VDB in Delphix DCT to establish a clean "Masked Baseline".
+   * *Highlight to the customer*: Masking is executed in-place on the target non-production database, avoiding the need to extract or stage sensitive records through separate external application pipelines. When deterministic or consistent masking algorithms are appropriately configured, referential relationships remain preserved.
+3. Once the masking job completes, create a VDB bookmark or snapshot in Delphix DCT to establish a clean "Masked Baseline".
 
 ### Step 5: Deploy Test Application & Verify Side-by-Side
 1. Deploy the Test VDB application container:
@@ -303,43 +325,46 @@ sudo podman exec hms3_prod python manage.py seed_argentina --clean
    ./hms-ctl.py start -e test -c ar
    ```
 2. Open both environments in adjacent browser tabs:
-   * **Left Tab (Prod)**: `http://<HOST-IP>:8012/` (Red Banner - Real Production Data)
+   * **Left Tab (Prod)**: `http://<HOST-IP>:8012/` (Red Banner - Simulated Production Data)
    * **Right Tab (Test VDB)**: `http://<HOST-IP>:8013/` (Green Banner - Masked Non-Production Data)
 3. **Key Points to Highlight to the Customer**:
-   * Record counts and primary keys (IDs 1 to 40) are identical between Prod and Test VDB.
-   * Names, identification numbers, contact information, and diagnoses are realistically and consistently masked.
-   * The hospital application operates 100% normally without any application changes.
+   * With the default seed configuration, patient IDs 1–40 and record counts are preserved between source and masked VDB.
+   * Names, identification numbers, and contact details are realistically and consistently masked according to the configured rule set.
+   * The hospital application continues operating normally without requiring any application-level changes or reconfigurations.
 
 ### Step 6: Simulate UAT Accidental Data Deletion & Regression
 1. On the **Test VDB (Port 8013)**, open a patient record (e.g., Patient ID #1).
 2. Click **`[🗑️ Delete Record]`** and confirm deletion.
-3. Verify that Patient #1 has been physically removed from the SQL Server database.
+3. Verify that Patient #1 has been removed from the non-production database.
 4. **The Traditional Database Restore Bottleneck**:
    * In traditional DevOps environments, recovering from accidental record deletion, broken migrations, or corrupted test runs requires requesting a full physical database restore from DBA / IT operations.
-   * This process routinely takes hours or days, leaving QA and development teams blocked.
+   * Depending on database size, infrastructure, and organizational procedures, traditional restore workflows often take hours or days, causing extended delays for QA and testing.
 
-### Step 7: Instant VDB Rewind via Delphix Data Control Tower (DCT)
-1. Navigate to **Delphix DCT / Virtualization Engine**.
+### Step 7: VDB Rewind / Rollback via Delphix Data Control Tower (DCT)
+1. Navigate to **Perforce Data Control Tower (DCT)** or the Continuous Data Engine.
 2. Select the VDB (`vhms3_ar`, `vhms3_br`, or `vhms3_us`).
-3. Click **Rewind** and select the snapshot taken in Step 4 (immediately after masking).
-4. Within **seconds**, Delphix rolls back the database blocks to the clean masked state.
+3. Execute a **Rewind / Rollback** to the bookmark or snapshot taken in Step 4 (immediately after masking).
+4. Delphix rolls back the database blocks to the clean masked state, substantially reducing recovery time compared with a traditional physical restore workflow.
 5. In the HMS 3.0 Test application (Port 8013), click **`[🔄 Refresh Data]`**:
-   * Patient ID #1 is instantly restored to its exact original state.
-   * No physical backup restoration, no storage waste, and zero downtime for the team.
+   * Patient ID #1 is restored to its exact original state.
+   * No physical backup restoration, no duplicated storage waste, and minimal downtime for the engineering team.
 
 ---
 
 ## 🌐 REST API Endpoints Specification
 
-HMS 3.0 provides a standardized, English-first RESTful API for programmatically inspecting, creating, updating, and verifying data across production and test environments:
+HMS 3.0 provides a standardized, English-first RESTful API for programmatically inspecting, creating, updating, and verifying data across environments.
+
+> [!NOTE]
+> The API is intentionally lightweight and unauthenticated for isolated laboratory and demonstration use. It is not intended to represent a production healthcare security model.
 
 | Method | Endpoint | Description | Request Payload |
 |---|---|---|---|
 | `GET` | `/api/health/` | Service health status, environment, database, masking state | None |
 | `GET` | `/api/patients/` | List all patients (supports `?q=<search_term>` query) | Query params |
-| `GET` | `/api/patient/<id>/` | Detailed PHI record for a specific patient | None |
+| `GET` | `/api/patient/<id>/` | Detailed patient record containing simulated sensitive/health data | None |
 | `POST` | `/api/patient/save/` | Create or update a patient record | JSON or Form Data |
-| `POST` | `/api/patient/<id>/delete/` | Delete patient record (simulates UAT data corruption) | None / Form CSRF |
+| `POST` | `/api/patient/<id>/delete/` | Delete patient record (simulates UAT data corruption) | None (optional CSRF token from web UI) |
 | `GET` | `/api/doctors/` | List all medical doctors and their specialties | None |
 
 ### API Usage Examples
@@ -358,7 +383,7 @@ curl -s http://localhost:8012/api/health/ | jq .
 }
 ```
 
-#### 2. Query Patient PHI Record
+#### 2. Query Detailed Patient Record
 ```bash
 curl -s http://localhost:8012/api/patient/1/ | jq .
 ```
@@ -382,7 +407,18 @@ curl -s http://localhost:8012/api/patient/1/ | jq .
 }
 ```
 
-#### 3. Create or Update Patient (JSON)
+#### 3. Create Patient - Minimal Demo Example (First & Last Name Only)
+```bash
+curl -s -X POST http://localhost:8012/api/patient/save/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "first_name": "Mariana",
+    "last_name": "Vidal"
+  }' | jq .
+```
+*(HMS 3.0 automatically completes required database values such as document numbers and a default birth date).*
+
+#### 4. Create or Update Patient - Full Example (JSON)
 ```bash
 curl -s -X POST http://localhost:8012/api/patient/save/ \
   -H "Content-Type: application/json" \
@@ -401,7 +437,7 @@ curl -s -X POST http://localhost:8012/api/patient/save/ \
   }' | jq .
 ```
 
-#### 4. Delete Patient (UAT Failure Simulation)
+#### 5. Delete Patient (UAT Failure Simulation)
 ```bash
 curl -s -X POST http://localhost:8013/api/patient/1/delete/ | jq .
 ```
@@ -428,6 +464,8 @@ hms3/
 │   │   ├── models_br.py         # Brazilian schema (PACIENTES, MEDICOS, CPF, RG, CRM)
 │   │   ├── models_us.py         # US schema (PATIENTS, DOCTORS, SSN, NPI, ZIP)
 │   │   ├── views.py             # Multi-country dashboard, detail API, save/delete
+│   │   ├── migrations/
+│   │   │   └── 0001_initial.py  # Baseline schema migration
 │   │   └── management/
 │   │       └── commands/
 │   │           ├── seed_argentina.py  # DNI + Modulo 11 CUIL generator
@@ -452,8 +490,13 @@ hms3/
 
 ---
 
-## 🔒 Security & Privacy Notice
-All patient and physician data generated by `seed_argentina`, `seed_brazil`, and `seed_usa` is **100% synthetically generated** using algorithmic pseudo-random permutations. Any resemblance to real persons, living or deceased, or actual medical records is purely coincidental.
+## 🔒 Security, Privacy & Laboratory Notice
+
+HMS 3.0 is a demonstration and reference application designed exclusively for isolated laboratory evaluation of **Perforce Delphix Continuous Data**, **Perforce Delphix Continuous Compliance**, and **Perforce Data Control Tower**.
+
+* **Synthetic Data**: All patient and physician data generated by `seed_argentina`, `seed_brazil`, and `seed_usa` is **100% synthetically generated** using pseudo-random permutations. Any resemblance to real persons, living or deceased, or actual medical records is purely coincidental.
+* **Laboratory Security Model**: HMS 3.0 is intentionally configured for rapid, unauthenticated testing and demonstration in closed environments. It does not implement a production healthcare authentication, authorization, or audit model, nor does it certify legal compliance with HIPAA, LGPD, or Ley 25.326.
+* **Disclaimer**: HMS 3.0 is not an official healthcare or medical product. All trademarks and registered trademarks mentioned are the property of their respective owners.
 
 ---
-*Developed for Delphix Continuous Compliance & Data Virtualization Demonstration Environments.*
+*Developed for Perforce Delphix Continuous Data, Continuous Compliance & Data Control Tower Demonstration Environments.*
