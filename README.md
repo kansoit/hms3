@@ -118,12 +118,19 @@ A critical challenge during live demonstrations is comparing **Production (Port 
 HMS 3.0 uses an optimized multi-stage `Dockerfile.django` based on `python:3.11-slim-bookworm` with Microsoft's official ODBC Driver 18 for SQL Server.
 
 ### Build the Image
-From the repository root:
+You can build the container image directly using the built-in CLI manager (which automatically detects Podman or Docker):
 ```bash
-sudo podman build -t hms3-app:1.0 -f Dockerfile.django .
+./hms-ctl.py build
 ```
 
-*Note: If using standard Docker, substitute `sudo podman` with `docker`.*
+Or build manually using Podman or Docker:
+```bash
+# Using Podman
+podman build -t hms3-app:1.0 -f Dockerfile.django .
+
+# Using Docker
+docker build -t hms3-app:1.0 -f Dockerfile.django .
+```
 
 ---
 

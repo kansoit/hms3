@@ -17,7 +17,7 @@ from typing import Dict, List, Optional, Tuple
 
 # Base Directory & Defaults
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_IMAGE = "hms3-app:1.0"
+DEFAULT_IMAGE = os.getenv("HMS_IMAGE", "hms3-app:1.0")
 
 COUNTRIES_META = {
     "ar": {
