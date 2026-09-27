@@ -355,14 +355,14 @@ def cmd_start(args: argparse.Namespace) -> int:
     access_url = f"http://{host_ip}:{host_port}/"
 
     print("")
-    print(Colors.color("╔" + "═" * 58 + "╗", Colors.GREEN))
-    print(Colors.color("║", Colors.GREEN) + f" {Colors.color('SUCCESS! HMS 3.0 is live and running.', Colors.BOLD):<67}" + Colors.color("║", Colors.GREEN))
-    print(Colors.color("╠" + "═" * 58 + "╣", Colors.GREEN))
-    print(Colors.color("║", Colors.GREEN) + f"  Environment : {env_meta['label']:<43}" + Colors.color("║", Colors.GREEN))
-    print(Colors.color("║", Colors.GREEN) + f"  Country     : {country_meta['label']:<43}" + Colors.color("║", Colors.GREEN))
-    print(Colors.color("║", Colors.GREEN) + f"  Container   : {container_name:<43}" + Colors.color("║", Colors.GREEN))
-    print(Colors.color("║", Colors.GREEN) + f"  URL         : {Colors.color(access_url, Colors.CYAN):<52}" + Colors.color("║", Colors.GREEN))
-    print(Colors.color("╚" + "═" * 58 + "╝", Colors.GREEN))
+    print(Colors.color("═" * 60, Colors.GREEN))
+    print(f" {Colors.color('SUCCESS! HMS 3.0 is live and running.', Colors.BOLD)}")
+    print(Colors.color("─" * 60, Colors.GREEN))
+    print(f" Environment : {Colors.color(env_meta['label'], Colors.WHITE)}")
+    print(f" Country     : {Colors.color(country_meta['label'], Colors.WHITE)}")
+    print(f" Container   : {Colors.color(container_name, Colors.BOLD)}")
+    print(f" URL         : {Colors.color(access_url, Colors.CYAN)}")
+    print(Colors.color("═" * 60, Colors.GREEN))
     return 0
 
 
