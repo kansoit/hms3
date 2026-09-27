@@ -28,3 +28,6 @@ venv/
 .env
 .env*
 !.env*.example
+
+# Internal GitLab registry instructions (local only)
+GITLAB_REGISTRY.md
