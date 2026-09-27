@@ -7,6 +7,10 @@
 [![Python 3.11 / Django 5](https://img.shields.io/badge/Backend-Django%205%20%7C%20Python%203.11-092E20.svg)](https://www.djangoproject.com)
 [![Podman / Docker](https://img.shields.io/badge/Container-Podman%20%2F%20Docker-892CA0.svg)](https://podman.io)
 
+<p align="center">
+  <img src="assets/screenshot_hms3.png" alt="HMS 3.0 Dashboard - Metropolitan Hospital Management System" width="100%">
+</p>
+
 ---
 
 ## 📋 Executive Overview
