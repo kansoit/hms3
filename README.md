@@ -1,5 +1,5 @@
 # HMS 3.0 - Metropolitan Hospital Management System
-### Delphix Continuous Compliance & Continuous Data (Data Virtualization) Demonstration Platform
+### Delphix Continuous Data , Continuous Compliance & Data Control Tower Demonstration Platform
 
 [![Delphix Continuous Compliance](https://img.shields.io/badge/Delphix-Continuous%20Compliance-blue.svg)](https://www.delphix.com)
 [![Delphix Data Virtualization](https://img.shields.io/badge/Delphix-Data%20Virtualization-green.svg)](https://www.delphix.com)
