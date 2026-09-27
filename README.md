@@ -200,46 +200,6 @@ HMS 3.0 includes an all-in-one Python CLI controller (**`hms-ctl.py`**) that sup
 
 ---
 
-## 📜 Legacy Deployment Script (`launch_hms.sh`)
-
-Deploying can also be done via the legacy bash script:
-
-```bash
-./launch_hms.sh [prod|test] [ar|br|us]
-```
-*(If the country argument is omitted, it defaults to `ar`)*.
-
-### Deployment Examples
-
-#### 1. Argentina Deployments
-```bash
-# Launch Production Argentina on port 8012 (DB: hms3_ar)
-./launch_hms.sh prod ar
-
-# Launch Test VDB Argentina on port 8013 (DB: vhms3_ar)
-./launch_hms.sh test ar
-```
-
-#### 2. Brazil Deployments
-```bash
-# Launch Production Brazil on port 8012 (DB: hms3_br)
-./launch_hms.sh prod br
-
-# Launch Test VDB Brazil on port 8013 (DB: vhms3_br)
-./launch_hms.sh test br
-```
-
-#### 3. USA Deployments
-```bash
-# Launch Production USA on port 8012 (DB: hms3_us)
-./launch_hms.sh prod us
-
-# Launch Test VDB USA on port 8013 (DB: vhms3_us)
-./launch_hms.sh test us
-```
-
----
-
 ## 🧪 Database Seeding & Synthetic Data Generators
 
 HMS 3.0 includes dedicated Django management commands to populate production databases with realistic, regulatory-compliant synthetic data.
@@ -292,7 +252,7 @@ This step-by-step walkthrough demonstrates how to deliver an impactful Delphix C
 ### Step 1: Deploy Production & Generate Fresh Data
 ```bash
 # 1. Deploy Production (Port 8012) - Example: Argentina
-./launch_hms.sh prod ar
+./hms-ctl.py start -e prod -c ar
 
 # 2. Populate fresh, clean records starting at ID 1
 sudo podman exec hms3_prod python manage.py seed_argentina --clean
@@ -323,7 +283,7 @@ sudo podman exec hms3_prod python manage.py seed_argentina --clean
 ### Step 5: Deploy Test Application & Verify Side-by-Side
 1. Deploy the Test VDB application container:
    ```bash
-   ./launch_hms.sh test ar
+   ./hms-ctl.py start -e test -c ar
    ```
 2. Open both environments in adjacent browser tabs:
    * **Left Tab (Prod)**: `http://<HOST-IP>:8012/` (Red Banner - Real Production Data)
@@ -462,7 +422,7 @@ hms3/
 │   └── requirements.txt         # Django, mssql-django, pyodbc, gunicorn, whitenoise
 ├── docker-compose-app.yml       # Podman Compose service definition
 ├── Dockerfile.django            # Multi-stage build with Microsoft ODBC Driver 18
-├── launch_hms.sh                # Unified multi-country deployment script
+├── hms-ctl.py                   # Unified multi-country container lifecycle CLI
 ├── .env.example                 # Master environment configuration template
 ├── .env-prod-ar.example         # Production Argentina configuration template
 ├── .env-test-ar.example         # Test VDB Argentina configuration template
