@@ -225,6 +225,14 @@ def get_container_env_vars(cmd_prefix: List[str], container_name: str) -> Dict[s
     return env_map
 
 
+def get_container_country(cmd_prefix: List[str], container_name: str) -> Optional[str]:
+    env_vars = get_container_env_vars(cmd_prefix, container_name)
+    val = env_vars.get("HMS_COUNTRY")
+    if val:
+        return val.strip().lower()
+    return None
+
+
 def parse_env_file(filepath: Path) -> Dict[str, str]:
     data = {}
     if not filepath.is_file():
@@ -344,18 +352,32 @@ def cmd_stop(args: argparse.Namespace) -> int:
     container_name = ENVIRONMENTS_META[env_name]["name"]
     timeout = str(args.time) if hasattr(args, "time") and args.time is not None else "2"
 
+    req_country = args.country.lower() if getattr(args, "country", None) else None
+    req_code = COUNTRIES_META.get(req_country, {}).get("code", req_country.upper()) if req_country else None
+
     if not container_exists(cmd_prefix, container_name):
-        print_info(f"Container '{container_name}' does not exist. Nothing to stop.")
+        country_suffix = f" ({req_code})" if req_code else ""
+        print_info(f"Container '{container_name}'{country_suffix} does not exist. Nothing to stop.")
         return 0
+
+    active_country = get_container_country(cmd_prefix, container_name)
+    act_code = COUNTRIES_META.get(active_country, {}).get("code", active_country.upper()) if active_country else None
+
+    if req_country and active_country and req_country != active_country:
+        print_info(f"Container '{container_name}' ({req_code}) is not running (current container is {act_code}). Nothing to stop.")
+        return 0
+
+    display_code = act_code or req_code
+    country_info = f" ({display_code})" if display_code else ""
 
     if not container_is_running(cmd_prefix, container_name):
-        print_info(f"Container '{container_name}' is already stopped.")
+        print_info(f"Container '{container_name}'{country_info} is already stopped.")
         return 0
 
-    print_info(f"Stopping container '{container_name}' using {engine} (timeout: {timeout}s)...")
+    print_info(f"Stopping container '{container_name}'{country_info} using {engine} (timeout: {timeout}s)...")
     res = subprocess.run(cmd_prefix + ["stop", "-t", timeout, container_name], capture_output=True, text=True)
     if res.returncode == 0:
-        print_ok(f"Container '{container_name}' stopped cleanly.")
+        print_ok(f"Container '{container_name}'{country_info} stopped cleanly.")
         return 0
     else:
         print_error(f"Error stopping container:\n{res.stderr.strip()}")
@@ -371,15 +393,29 @@ def cmd_rm(args: argparse.Namespace) -> int:
     engine, cmd_prefix, ver_str = detect_engine(args.engine)
     container_name = ENVIRONMENTS_META[env_name]["name"]
 
+    req_country = args.country.lower() if getattr(args, "country", None) else None
+    req_code = COUNTRIES_META.get(req_country, {}).get("code", req_country.upper()) if req_country else None
+
     if not container_exists(cmd_prefix, container_name):
-        print_info(f"Container '{container_name}' does not exist. Nothing to remove.")
+        country_suffix = f" ({req_code})" if req_code else ""
+        print_info(f"Container '{container_name}'{country_suffix} does not exist. Nothing to remove.")
         return 0
 
+    active_country = get_container_country(cmd_prefix, container_name)
+    act_code = COUNTRIES_META.get(active_country, {}).get("code", active_country.upper()) if active_country else None
+
+    if req_country and active_country and req_country != active_country:
+        print_info(f"Container '{container_name}' ({req_code}) does not exist (current container is {act_code}). Nothing to remove.")
+        return 0
+
+    display_code = act_code or req_code
+    country_info = f" ({display_code})" if display_code else ""
+
     if container_is_running(cmd_prefix, container_name) and not getattr(args, "force", False):
-        print_warn(f"Container '{container_name}' is currently running. Use '-f / --force' to remove it.")
+        print_warn(f"Container '{container_name}'{country_info} is currently running. Use '-f / --force' to remove it.")
         return 1
 
-    print_info(f"Removing container '{container_name}'...")
+    print_info(f"Removing container '{container_name}'{country_info}...")
     rm_cmd = cmd_prefix + ["rm"]
     if getattr(args, "force", False):
         rm_cmd.append("-f")
@@ -387,7 +423,7 @@ def cmd_rm(args: argparse.Namespace) -> int:
 
     res = subprocess.run(rm_cmd, capture_output=True, text=True)
     if res.returncode == 0:
-        print_ok(f"Container '{container_name}' removed.")
+        print_ok(f"Container '{container_name}'{country_info} removed.")
         return 0
     else:
         print_error(f"Error removing container:\n{res.stderr.strip()}")
@@ -395,6 +431,17 @@ def cmd_rm(args: argparse.Namespace) -> int:
 
 
 def cmd_restart(args: argparse.Namespace) -> int:
+    engine, cmd_prefix, _ = detect_engine(args.engine)
+    container_name = ENVIRONMENTS_META[args.env.lower()]["name"]
+    req_country = args.country.lower() if getattr(args, "country", None) else None
+    active_country = get_container_country(cmd_prefix, container_name)
+
+    if req_country and active_country and req_country != active_country:
+        act_code = COUNTRIES_META.get(active_country, {}).get("code", active_country.upper())
+        req_code = COUNTRIES_META.get(req_country, {}).get("code", req_country.upper())
+        print_info(f"Replacing existing container ({act_code}) with new instance ({req_code})...")
+        return cmd_start(args)
+
     stop_res = cmd_stop(args)
     if stop_res != 0:
         return stop_res
@@ -414,6 +461,8 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(Colors.color("─" * 78, Colors.DIM))
 
     for env_key, meta in ENVIRONMENTS_META.items():
+        if getattr(args, "env", None) and args.env.lower() != env_key:
+            continue
         c_name = meta["name"]
         default_port = meta["port"]
         exists = container_exists(cmd_prefix, c_name)
@@ -423,6 +472,8 @@ def cmd_status(args: argparse.Namespace) -> int:
             env_vars = get_container_env_vars(cmd_prefix, c_name)
             country_code = env_vars.get("HMS_COUNTRY", "-")
             port = env_vars.get("HOST_PORT", str(default_port))
+            if getattr(args, "country", None) and args.country.upper() != country_code.upper():
+                continue
             if running:
                 status_str = Colors.color("RUNNING", Colors.GREEN)
                 url_str = Colors.color(f"http://{host_ip}:{port}/", Colors.CYAN)
@@ -430,6 +481,8 @@ def cmd_status(args: argparse.Namespace) -> int:
                 status_str = Colors.color("STOPPED", Colors.YELLOW)
                 url_str = f"http://{host_ip}:{port}/ (offline)"
         else:
+            if getattr(args, "country", None):
+                continue
             country_code = "-"
             port = str(default_port)
             status_str = Colors.color("NOT CREATED", Colors.DIM)
@@ -454,6 +507,13 @@ def cmd_logs(args: argparse.Namespace) -> int:
     if not container_exists(cmd_prefix, container_name):
         print_error(f"Container '{container_name}' does not exist.")
         return 1
+
+    req_country = args.country.lower() if getattr(args, "country", None) else None
+    active_country = get_container_country(cmd_prefix, container_name)
+    if req_country and active_country and req_country != active_country:
+        act_code = COUNTRIES_META.get(active_country, {}).get("code", active_country.upper())
+        req_code = COUNTRIES_META.get(req_country, {}).get("code", req_country.upper())
+        print_warn(f"Note: active container is '{act_code}', not requested '{req_code}'.")
 
     log_cmd = cmd_prefix + ["logs"]
     if getattr(args, "follow", False):
@@ -528,6 +588,7 @@ Examples:
     # Command: stop
     p_stop = subparsers.add_parser("stop", help="Stop an HMS container environment cleanly")
     p_stop.add_argument("-e", "--env", required=True, choices=["prod", "test"], help="Environment: 'prod' or 'test'")
+    p_stop.add_argument("-c", "--country", choices=["ar", "br", "us"], help="Country context (optional: 'ar', 'br', or 'us')")
     p_stop.add_argument("-t", "--time", type=int, default=2, help="Graceful stop timeout in seconds (default: 2)")
     add_common(p_stop)
 
@@ -541,16 +602,20 @@ Examples:
     # Command: rm
     p_rm = subparsers.add_parser("rm", aliases=["remove"], help="Remove an HMS container")
     p_rm.add_argument("-e", "--env", required=True, choices=["prod", "test"], help="Environment: 'prod' or 'test'")
+    p_rm.add_argument("-c", "--country", choices=["ar", "br", "us"], help="Country context (optional: 'ar', 'br', or 'us')")
     p_rm.add_argument("-f", "--force", action="store_true", help="Force remove running container")
     add_common(p_rm)
 
     # Command: status
     p_status = subparsers.add_parser("status", help="Show overview and status of HMS environments")
+    p_status.add_argument("-e", "--env", choices=["prod", "test"], help="Filter by environment (optional)")
+    p_status.add_argument("-c", "--country", choices=["ar", "br", "us"], help="Filter by country (optional)")
     add_common(p_status)
 
     # Command: logs
     p_logs = subparsers.add_parser("logs", help="View container logs")
     p_logs.add_argument("-e", "--env", required=True, choices=["prod", "test"], help="Environment: 'prod' or 'test'")
+    p_logs.add_argument("-c", "--country", choices=["ar", "br", "us"], help="Country context (optional: 'ar', 'br', or 'us')")
     p_logs.add_argument("-f", "--follow", action="store_true", help="Follow log output")
     p_logs.add_argument("-n", "--tail", type=int, default=50, help="Number of lines to show (default: 50)")
     add_common(p_logs)
