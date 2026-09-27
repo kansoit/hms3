@@ -183,6 +183,7 @@ def patient_list(request):
             'address': p.direccion,
             'city': p.localidad,
             'state': p.provincia,
+            'postal_code': getattr(p, 'codigo_postal', getattr(p, 'zip_code', getattr(p, 'cep', ''))),
             'insurance': p.obra_social,
             'diagnosis': p.diagnostico_clinico,
             'doctor': str(p.medico_asignado) if p.medico_asignado else None,
@@ -334,6 +335,7 @@ def patient_save(request):
     country = os.getenv('HMS_COUNTRY', 'AR').upper()
     default_city = 'New York' if country == 'US' else ('São Paulo' if country == 'BR' else 'CABA')
     default_state = 'NY' if country == 'US' else ('SP' if country == 'BR' else 'Buenos Aires')
+    default_postal = '10001' if country == 'US' else ('01310-100' if country == 'BR' else 'C1002')
     default_ins = 'Blue Cross' if country == 'US' else ('Unimed' if country == 'BR' else 'OSDE')
     default_phone = '+1 (212) 555-0199' if country == 'US' else ('+55 11 98888-0000' if country == 'BR' else '+54 9 11 4000-0000')
     default_domain = 'hospital.org' if country == 'US' else ('hospital.com.br' if country == 'BR' else 'hospital.com.ar')
@@ -357,8 +359,8 @@ def patient_save(request):
             paciente.localidad = city
         if state:
             paciente.provincia = state
-        if postal_code and hasattr(paciente, 'codigo_postal'):
-            paciente.codigo_postal = postal_code
+        if hasattr(paciente, 'codigo_postal'):
+            paciente.codigo_postal = postal_code or default_postal
         if insurance:
             paciente.obra_social = insurance
         if insurance_number:
@@ -386,8 +388,8 @@ def patient_save(request):
         paciente.direccion = address or ("100 Main St" if country == 'US' else ("Av. Paulista 1000" if country == 'BR' else "Av. Corrientes 1234"))
         paciente.localidad = city or default_city
         paciente.provincia = state or default_state
-        if postal_code and hasattr(paciente, 'codigo_postal'):
-            paciente.codigo_postal = postal_code
+        if hasattr(paciente, 'codigo_postal'):
+            paciente.codigo_postal = postal_code or default_postal
         paciente.obra_social = insurance or default_ins
         paciente.numero_afiliado = insurance_number or "10002345"
         paciente.diagnostico_clinico = diagnosis or ("Clinical Checkup" if country == 'US' else ("Consulta de rotina" if country == 'BR' else "Consulta médica general"))

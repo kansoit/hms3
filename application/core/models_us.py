@@ -344,6 +344,30 @@ class Patient(models.Model):
         self.state = val
 
     @property
+    def codigo_postal(self):
+        return self.zip_code
+
+    @codigo_postal.setter
+    def codigo_postal(self, val):
+        self.zip_code = val
+
+    @property
+    def cep(self):
+        return self.zip_code
+
+    @cep.setter
+    def cep(self, val):
+        self.zip_code = val
+
+    @property
+    def postal_code(self):
+        return self.zip_code
+
+    @postal_code.setter
+    def postal_code(self, val):
+        self.zip_code = val
+
+    @property
     def obra_social(self):
         return self.insurance_provider
 

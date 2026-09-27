@@ -220,3 +220,11 @@ class Paciente(models.Model):
     @property
     def zip_code(self):
         return self.codigo_postal
+
+    @property
+    def postal_code(self):
+        return self.codigo_postal
+
+    @postal_code.setter
+    def postal_code(self, val):
+        self.codigo_postal = val
