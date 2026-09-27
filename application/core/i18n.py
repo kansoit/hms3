@@ -64,6 +64,7 @@ TEXTS = {
         'empty_doctors': 'No se encontraron médicos registrados con los filtros especificados.',
         'confirm_delete_title': '¿Confirmar eliminación?',
         'confirm_delete_desc': 'Se eliminará de la base de datos el paciente: ',
+        'error_name_required': 'Debe ingresar al menos Nombre y Apellido.',
         'uat_failure_hint': 'Simulación de Falla de Datos en UAT',
         'uat_failure_desc': 'En un entorno de pruebas convencional, un borrado accidental o corrupción de datos requeriría horas de restauración física. Con Delphix, podés realizar un <strong>Rewind instantáneo de la VDB</strong> en segundos.',
     },
@@ -130,6 +131,7 @@ TEXTS = {
         'empty_doctors': 'Nenhum médico encontrado com os filtros selecionados.',
         'confirm_delete_title': 'Confirmar exclusão?',
         'confirm_delete_desc': 'O seguinte paciente será excluído do banco de dados: ',
+        'error_name_required': 'Deve informar ao menos Nome e Sobrenome.',
         'uat_failure_hint': 'Simulação de Falha de Dados em Homologação / UAT',
         'uat_failure_desc': 'Em um ambiente tradicional de testes, uma exclusão indevida ou corrupção exigiria horas de restauração de backup. Com Delphix, você executa um <strong>Rewind instantâneo da VDB</strong> em segundos.',
     },
@@ -196,6 +198,7 @@ TEXTS = {
         'empty_doctors': 'No physicians found matching the search criteria.',
         'confirm_delete_title': 'Confirm Record Deletion?',
         'confirm_delete_desc': 'The following patient will be deleted from the database: ',
+        'error_name_required': 'At least First Name and Last Name must be provided.',
         'uat_failure_hint': 'UAT Data Failure & Regression Simulation',
         'uat_failure_desc': 'In traditional testing environments, accidental record deletion or corruption requires hours of database restores. With Delphix, you can execute an <strong>Instant VDB Rewind</strong> in seconds.',
     }

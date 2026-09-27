@@ -242,25 +242,29 @@ class Paciente(models.Model):
     )
     bairro = models.CharField(
         max_length=60,
-        default='Centro',
+        blank=True,
+        default='',
         db_column='BAIRRO',
         verbose_name="Bairro"
     )
     cidade = models.CharField(
         max_length=60,
-        default='São Paulo',
+        blank=True,
+        default='',
         db_column='CIDADE',
         verbose_name="Cidade"
     )
     estado = models.CharField(
         max_length=10,
-        default='SP',
+        blank=True,
+        default='',
         db_column='ESTADO',
         verbose_name="Estado (UF)"
     )
     cep = models.CharField(
         max_length=10,
-        default='01310-100',
+        blank=True,
+        default='',
         db_column='CEP',
         verbose_name="CEP"
     )

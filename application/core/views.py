@@ -348,19 +348,27 @@ def patient_save(request):
     notes = get_val('notes', 'clinical_notes')
     doctor_id = get_val('doctor_id')
 
-    if not doc_primary or not last_name or not first_name:
+    country = os.getenv('HMS_COUNTRY', 'AR').upper()
+
+    if not last_name or not first_name:
+        msg = (
+            'Debe ingresar al menos Nombre y Apellido.' if country == 'AR'
+            else ('Deve informar ao menos Nome e Sobrenome.' if country == 'BR'
+            else 'At least First Name and Last Name must be provided.')
+        )
         return JsonResponse({
             'status': 'error',
-            'message': 'Primary ID, Last Name, and First Name are required fields.'
+            'message': msg
         }, status=400)
 
-    country = os.getenv('HMS_COUNTRY', 'AR').upper()
-    default_city = 'New York' if country == 'US' else ('São Paulo' if country == 'BR' else 'CABA')
-    default_state = 'NY' if country == 'US' else ('SP' if country == 'BR' else 'Buenos Aires')
-    default_postal = '10001' if country == 'US' else ('01310-100' if country == 'BR' else 'C1002')
-    default_ins = 'Blue Cross' if country == 'US' else ('Unimed' if country == 'BR' else 'OSDE')
-    default_phone = '+1 (212) 555-0199' if country == 'US' else ('+55 11 98888-0000' if country == 'BR' else '+54 9 11 4000-0000')
-    default_domain = 'hospital.org' if country == 'US' else ('hospital.com.br' if country == 'BR' else 'hospital.com.ar')
+    if not doc_primary:
+        import random
+        if country == 'US':
+            doc_primary = f"ID{random.randint(10000000, 99999999)}"
+        elif country == 'BR':
+            doc_primary = f"{random.randint(10000000, 99999999)}"
+        else:
+            doc_primary = f"{random.randint(10000000, 99999999)}"
 
     if patient_id:
         paciente = get_object_or_404(Paciente, pk=patient_id)
@@ -371,26 +379,17 @@ def patient_save(request):
         paciente.nombre = first_name
         if dob:
             paciente.fecha_nacimiento = dob
-        if phone:
-            paciente.telefono_celular = phone
-        if email:
-            paciente.email = email
-        if address:
-            paciente.direccion = address
-        if city:
-            paciente.localidad = city
-        if state:
-            paciente.provincia = state
+        paciente.telefono_celular = phone or ''
+        paciente.email = email or ''
+        paciente.direccion = address or ''
+        paciente.localidad = city or ''
+        paciente.provincia = state or ''
         if hasattr(paciente, 'codigo_postal'):
-            paciente.codigo_postal = postal_code or default_postal
-        if insurance:
-            paciente.obra_social = insurance
-        if insurance_number:
-            paciente.numero_afiliado = insurance_number
-        if diagnosis:
-            paciente.diagnostico_clinico = diagnosis
-        if notes:
-            paciente.historia_clinica = notes
+            paciente.codigo_postal = postal_code or ''
+        paciente.obra_social = insurance or ''
+        paciente.numero_afiliado = insurance_number or ''
+        paciente.diagnostico_clinico = diagnosis or ''
+        paciente.historia_clinica = notes or ''
         if doctor_id and doctor_id.isdigit():
             paciente.medico_asignado_id = int(doctor_id)
     else:
@@ -403,19 +402,19 @@ def patient_save(request):
             paciente.fecha_nacimiento = dob
         else:
             from datetime import date
-            paciente.fecha_nacimiento = date(1985, 1, 1)
+            paciente.fecha_nacimiento = date(1990, 1, 1)
 
-        paciente.telefono_celular = phone or default_phone
-        paciente.email = email or f"{first_name.lower().replace(' ', '')}.{last_name.lower().replace(' ', '')}@{default_domain}"
-        paciente.direccion = address or ("100 Main St" if country == 'US' else ("Av. Paulista 1000" if country == 'BR' else "Av. Corrientes 1234"))
-        paciente.localidad = city or default_city
-        paciente.provincia = state or default_state
+        paciente.telefono_celular = phone or ''
+        paciente.email = email or ''
+        paciente.direccion = address or ''
+        paciente.localidad = city or ''
+        paciente.provincia = state or ''
         if hasattr(paciente, 'codigo_postal'):
-            paciente.codigo_postal = postal_code or default_postal
-        paciente.obra_social = insurance or default_ins
-        paciente.numero_afiliado = insurance_number or "10002345"
-        paciente.diagnostico_clinico = diagnosis or ("Clinical Checkup" if country == 'US' else ("Consulta de rotina" if country == 'BR' else "Consulta médica general"))
-        paciente.historia_clinica = notes or ("Routine evaluation without acute complaints." if country == 'US' else ("Avaliação de rotina sem queixas agudas." if country == 'BR' else "Sin antecedentes relevantes reportados."))
+            paciente.codigo_postal = postal_code or ''
+        paciente.obra_social = insurance or ''
+        paciente.numero_afiliado = insurance_number or ''
+        paciente.diagnostico_clinico = diagnosis or ''
+        paciente.historia_clinica = notes or ''
         paciente.medico_asignado_id = int(doctor_id) if doctor_id and doctor_id.isdigit() else None
 
     try:

@@ -207,18 +207,22 @@ class Paciente(models.Model):
     )
     localidad = models.CharField(
         max_length=60,
-        default='CABA',
+        blank=True,
+        default='',
         db_column='LOCALIDAD',
         verbose_name="Localidad"
     )
     provincia = models.CharField(
         max_length=60,
-        default='Buenos Aires',
+        blank=True,
+        default='',
         db_column='PROVINCIA',
         verbose_name="Provincia"
     )
     codigo_postal = models.CharField(
         max_length=10,
+        blank=True,
+        default='',
         db_column='CODIGO_POSTAL',
         verbose_name="Código Postal"
     )

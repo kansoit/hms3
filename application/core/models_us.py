@@ -243,19 +243,22 @@ class Patient(models.Model):
     )
     city = models.CharField(
         max_length=60,
-        default='New York',
+        blank=True,
+        default='',
         db_column='CITY',
         verbose_name="City"
     )
     state = models.CharField(
         max_length=10,
-        default='NY',
+        blank=True,
+        default='',
         db_column='STATE',
         verbose_name="State Code"
     )
     zip_code = models.CharField(
         max_length=10,
-        default='10001',
+        blank=True,
+        default='',
         db_column='ZIP_CODE',
         verbose_name="ZIP Code"
     )

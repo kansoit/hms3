@@ -421,9 +421,7 @@
         deleting: "{{ txt.btn_delete|escapejs }}...",
         saveBtn: "{{ txt.btn_save|escapejs }}",
         deleteBtn: "{{ txt.btn_delete|escapejs }}",
-        defaultCity: "{% if HMS_COUNTRY == 'US' %}New York{% elif HMS_COUNTRY == 'BR' %}São Paulo{% else %}CABA{% endif %}",
-        defaultState: "{% if HMS_COUNTRY == 'US' %}NY{% elif HMS_COUNTRY == 'BR' %}SP{% else %}Buenos Aires{% endif %}",
-        defaultPostal: "{% if HMS_COUNTRY == 'US' %}10001{% elif HMS_COUNTRY == 'BR' %}01310-100{% else %}C1002{% endif %}",
+        nameRequiredError: "{{ txt.error_name_required|escapejs }}",
         colDoc1: "{{ txt.col_doc1|escapejs }}",
         colDoc2: "{{ txt.col_doc2|escapejs }}",
         dob: "{{ txt.field_dob|escapejs }}",
@@ -527,9 +525,9 @@
         document.getElementById('paciente_id').value = '';
         document.getElementById('form-paciente-title').innerText = TXT.newPatient;
         document.getElementById('form-error-alert').classList.add('d-none');
-        document.getElementById('input_localidad').value = TXT.defaultCity;
-        document.getElementById('input_provincia').value = TXT.defaultState;
-        document.getElementById('input_codigo_postal').value = TXT.defaultPostal;
+        document.getElementById('input_localidad').value = '';
+        document.getElementById('input_provincia').value = '';
+        document.getElementById('input_codigo_postal').value = '';
         const modal = new bootstrap.Modal(document.getElementById('modalPacienteForm'));
         modal.show();
     }
@@ -555,8 +553,8 @@
                 document.getElementById('input_telefono_celular').value = data.phone || '';
                 document.getElementById('input_email').value = data.email || '';
                 document.getElementById('input_direccion').value = data.address || '';
-                document.getElementById('input_localidad').value = data.city || TXT.defaultCity;
-                document.getElementById('input_provincia').value = data.state || TXT.defaultState;
+                document.getElementById('input_localidad').value = data.city || '';
+                document.getElementById('input_provincia').value = data.state || '';
                 document.getElementById('input_codigo_postal').value = data.postal_code || '';
                 document.getElementById('input_obra_social').value = data.insurance_provider || '';
                 document.getElementById('input_numero_afiliado').value = data.insurance_number || '';
@@ -573,10 +571,19 @@
     function guardarPaciente(event) {
         event.preventDefault();
         const form = document.getElementById('formPaciente');
-        const btn = document.getElementById('btn-submit-paciente');
         const alertBox = document.getElementById('form-error-alert');
         alertBox.classList.add('d-none');
-        
+
+        const firstName = (document.getElementById('input_nombre').value || '').trim();
+        const lastName = (document.getElementById('input_apellido').value || '').trim();
+
+        if (!firstName || !lastName) {
+            alertBox.innerText = TXT.nameRequiredError || 'Debe ingresar al menos Nombre y Apellido.';
+            alertBox.classList.remove('d-none');
+            return;
+        }
+
+        const btn = document.getElementById('btn-submit-paciente');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> ' + TXT.saving;
 
