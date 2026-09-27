@@ -57,7 +57,7 @@
                 </div>
                 <div>
                     <h6 class="text-muted text-uppercase mb-1 small fw-semibold">Compliance Status</h6>
-                    <span class="badge bg-success fs-6"><i class="fa-solid fa-check-double me-1"></i> {% if HMS_COUNTRY == 'US' %}MASKED (VDB){% elif HMS_COUNTRY == 'BR' %}MASCARADO (VDB){% else %}ENMASCARADO (VDB){% endif %}</span>
+                    <span class="badge bg-success fs-6"><i class="fa-solid fa-check-double me-1"></i> {{ txt.badge_status_test }}</span>
                 </div>
                 {% else %}
                 <div class="rounded-3 bg-danger text-white p-3 me-3 fs-3">
@@ -65,7 +65,7 @@
                 </div>
                 <div>
                     <h6 class="text-muted text-uppercase mb-1 small fw-semibold">Compliance Status</h6>
-                    <span class="badge bg-danger fs-6"><i class="fa-solid fa-unlock me-1"></i> {% if HMS_COUNTRY == 'US' %}PRODUCTION (dSource){% elif HMS_COUNTRY == 'BR' %}PRODUÇÃO (dSource){% else %}PRODUCCIÓN (dSource){% endif %}</span>
+                    <span class="badge bg-danger fs-6"><i class="fa-solid fa-unlock me-1"></i> {{ txt.badge_status_prod }}</span>
                 </div>
                 {% endif %}
             </div>

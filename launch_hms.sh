@@ -50,7 +50,7 @@ case "$ENVIRONMENT" in
   test)
     PROJECT_NAME="hms3_test"
     PORT_HINT="8013"
-    echo -e "\n-> Target Environment: TEST VDB Masked (${COUNTRY_LABEL})"
+    echo -e "\n-> Target Environment: NON-PRODUCTION / NO PRODUCCIÓN (${COUNTRY_LABEL})"
     ;;
   *)
     echo -e "\nERROR: Invalid environment '$ENVIRONMENT'."
