@@ -146,11 +146,11 @@ Build the container image using the built-in CLI manager (which automatically de
 
 Or build manually using Podman or Docker:
 ```bash
-# Using Podman
-podman build -t hms3-app:1.0 -f Dockerfile.django .
+# Using Podman (or omit sudo if using rootless mode)
+sudo podman build -t hms3-app:1.0 -f Dockerfile.django .
 
 # Using Docker
-docker build -t hms3-app:1.0 -f Dockerfile.django .
+sudo docker build -t hms3-app:1.0 -f Dockerfile.django .
 ```
 
 ---
@@ -236,6 +236,9 @@ HMS 3.0 includes an all-in-one Python CLI controller (**`hms-ctl.py`**) that sup
 ./hms-ctl.py rm -e prod -c ar -f
 ```
 
+> [!NOTE]
+> **Container Execution Mode**: By default, `hms-ctl.py` uses `sudo` if present (rootfull execution), ensuring reliable binding to ports and standard networking. When interacting directly with containers launched by `hms-ctl.py` (e.g. `exec`), use `sudo podman` or `sudo docker`. To operate in rootless mode, export `HMS_ROOTLESS=1` before invoking `hms-ctl.py`.
+
 ---
 
 ## 🧪 Database Seeding & Synthetic Data Generators
@@ -250,8 +253,8 @@ HMS 3.0 includes dedicated Django management commands to populate databases with
 * **Medical Licensing**: Generates realistic synthetic Matrícula Nacional (MN) and Provincial (MP) values.
 * **Command Syntax**:
   ```bash
-  # Prepend sudo only if required by your local Podman configuration
-  podman exec hms3_prod python manage.py seed_argentina --clean
+  # Prepend sudo to match hms-ctl rootfull execution (omit sudo only if HMS_ROOTLESS=1)
+  sudo podman exec hms3_prod python manage.py seed_argentina --clean
   ```
 
 ### 2. Seeding Brazil (`seed_brazil`)
@@ -259,7 +262,7 @@ HMS 3.0 includes dedicated Django management commands to populate databases with
 * **Medical Licensing**: Generates realistic Conselho Regional de Medicina (CRM) values with State jurisdiction codes (`CRM/SP`, `CRM/RJ`).
 * **Command Syntax**:
   ```bash
-  podman exec hms3_prod python manage.py seed_brazil --clean
+  sudo podman exec hms3_prod python manage.py seed_brazil --clean
   ```
 
 ### 3. Seeding USA (`seed_usa`)
@@ -267,7 +270,7 @@ HMS 3.0 includes dedicated Django management commands to populate databases with
 * **Medical Licensing**: Generates synthetic 10-digit NPI-format values using the **Luhn Modulo 10 check digit** algorithm (10-digit values starting with `1` or `2`).
 * **Command Syntax**:
   ```bash
-  podman exec hms3_prod python manage.py seed_usa --clean
+  sudo podman exec hms3_prod python manage.py seed_usa --clean
   ```
 
 ### Seeding Command Options
@@ -293,8 +296,8 @@ This step-by-step walkthrough demonstrates how to deliver an impactful Delphix C
 # 1. Deploy Production (Port 8012) - Example: Argentina
 ./hms-ctl.py start -e prod -c ar
 
-# 2. Populate fresh, clean records starting at ID 1 (prepend sudo if required)
-podman exec hms3_prod python manage.py seed_argentina --clean
+# 2. Populate fresh, clean records starting at ID 1 (matches hms-ctl rootfull execution)
+sudo podman exec hms3_prod python manage.py seed_argentina --clean
 ```
 *Show the audience the Production UI at `http://<HOST-IP>:8012/`.* Point out the unmasked DNIs, CUILs, patient names, addresses, and clinical notes under the crimson red Production banner.
 
