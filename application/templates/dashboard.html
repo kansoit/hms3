@@ -266,7 +266,7 @@
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content shadow-lg border-0">
             <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title" id="modalPacienteLabel"><i class="fa-solid fa-notes-medical text-info me-2"></i> {{ txt.modal_view_title }}</h5>
+                <h5 class="modal-title" id="modalPacienteLabel"><i class="fa-solid fa-notes-medical text-info me-2"></i> <span id="view-paciente-title">{{ txt.modal_view_title }}</span></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4" id="modal-paciente-body">
@@ -420,6 +420,7 @@
     const TXT = {
         newPatient: "{{ txt.modal_new_title|escapejs }}",
         editPatient: "{{ txt.modal_edit_title|escapejs }}",
+        viewPatient: "{{ txt.modal_view_title|escapejs }}",
         saving: "{{ txt.btn_save|escapejs }}...",
         deleting: "{{ txt.btn_delete|escapejs }}...",
         saveBtn: "{{ txt.btn_save|escapejs }}",
@@ -443,6 +444,7 @@
     let deleteTargetId = null;
 
     function verFichaPaciente(id) {
+        document.getElementById('view-paciente-title').innerText = `${TXT.viewPatient} #${id}`;
         const modal = new bootstrap.Modal(document.getElementById('modalPaciente'));
         const body = document.getElementById('modal-paciente-body');
         body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted">...</p></div>';
