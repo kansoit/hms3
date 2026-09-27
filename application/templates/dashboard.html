@@ -240,7 +240,7 @@
                                 <td class="fw-semibold text-nowrap">
                                     {% if HMS_COUNTRY == 'US' %}Dr. {{ m.first_name }} {{ m.last_name }}{% elif HMS_COUNTRY == 'BR' %}Dr(a). {{ m.nome }} {{ m.sobrenome }}{% else %}Dr/a. {{ m.apellido }}, {{ m.nombre }}{% endif %}
                                 </td>
-                                <td><span class="badge bg-info text-dark">{{ m.especialidad }}</span></td>
+                                <td><span class="badge bg-success">{{ m.especialidad }}</span></td>
                                 <td class="font-monospace text-nowrap">{{ m.telefono_celular }}</td>
                                 <td class="small">{{ m.email }}</td>
                             </tr>
