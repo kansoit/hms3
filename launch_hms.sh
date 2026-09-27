@@ -78,7 +78,7 @@ echo "-> Stopping previous containers if running..."
 sudo ENV_FILE="$SOURCE_ENV" podman-compose --env-file "$SOURCE_ENV" -f docker-compose-app.yml -p "$PROJECT_NAME" down || true
 
 echo "-> Starting container..."
-sudo ENV_FILE="$SOURCE_ENV" podman-compose --env-file "$SOURCE_ENV" -f docker-compose-app.yml -p "$PROJECT_NAME" up -d --build
+sudo ENV_FILE="$SOURCE_ENV" podman-compose --env-file "$SOURCE_ENV" -f docker-compose-app.yml -p "$PROJECT_NAME" up -d
 
 echo ""
 echo "========================================================"
