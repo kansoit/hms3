@@ -451,7 +451,7 @@ def cmd_rm(args: argparse.Namespace) -> int:
 
 
 def cmd_restart(args: argparse.Namespace) -> int:
-    engine, cmd_prefix, _ = detect_engine(args.engine)
+    engine, cmd_prefix, ver_str = detect_engine(args.engine)
     env_name = args.env.lower()
     country = args.country.lower()
 
@@ -463,8 +463,25 @@ def cmd_restart(args: argparse.Namespace) -> int:
         return 1
 
     container_name = ENVIRONMENTS_META[env_name]["name"]
+    req_code = COUNTRIES_META[country]["code"]
 
-    # Rebuild image if requested
+    if not container_exists(cmd_prefix, container_name):
+        print_error(f"Container '{container_name}' ({req_code}) does not exist. Use 'start' to create it.")
+        return 1
+
+    existing_vars = get_container_env_vars(cmd_prefix, container_name)
+    existing_country = existing_vars.get("HMS_COUNTRY", "").strip().lower()
+    existing_env = existing_vars.get("HMS_ENV", env_name).strip().lower()
+    act_code = COUNTRIES_META.get(existing_country, {}).get("code", existing_country.upper()) if existing_country else "UNKNOWN"
+
+    if existing_country != country or existing_env != env_name:
+        print_error(f"Container '{container_name}' already exists with a different configuration:")
+        print(f"   Existing   : Environment '{existing_env.upper()}', Country '{act_code}'")
+        print(f"   Requested  : Environment '{env_name.upper()}', Country '{req_code}'")
+        print_info(f"To switch country, first remove the existing container: './hms-ctl.py rm -e {existing_env} -c {existing_country} -f' and then start the new one.")
+        return 1
+
+    # Optional Rebuild
     if getattr(args, "build", False):
         print_info(f"Rebuilding container image '{DEFAULT_IMAGE}'...")
         build_cmd = cmd_prefix + ["build", "-t", DEFAULT_IMAGE, "-f", "Dockerfile.django", "."]
@@ -473,24 +490,22 @@ def cmd_restart(args: argparse.Namespace) -> int:
             print_error("Failed to build container image.")
             return res.returncode
         print_ok("Image built successfully.")
-
-    if container_exists(cmd_prefix, container_name):
-        existing_vars = get_container_env_vars(cmd_prefix, container_name)
-        existing_country = existing_vars.get("HMS_COUNTRY", "").strip().lower()
-        act_code = COUNTRIES_META.get(existing_country, {}).get("code", existing_country.upper()) if existing_country else "UNKNOWN"
-        req_code = COUNTRIES_META[country]["code"]
-
-        if existing_country and existing_country != country:
-            print_info(f"Replacing existing container '{container_name}' ({act_code}) with new instance ({req_code})...")
-        else:
-            print_info(f"Restarting container '{container_name}' ({req_code})...")
-
+        print_info(f"Recreating container '{container_name}' ({req_code}) with new image...")
         if container_is_running(cmd_prefix, container_name):
             subprocess.run(cmd_prefix + ["stop", "-t", "2", container_name], capture_output=True)
         subprocess.run(cmd_prefix + ["rm", "-f", container_name], capture_output=True)
+        args.build = False
+        return cmd_start(args)
 
-    args.build = False
-    return cmd_start(args)
+    # Standard restart of the existing container
+    print_info(f"Restarting container '{container_name}' ({req_code}) using {engine}...")
+    res = subprocess.run(cmd_prefix + ["restart", "-t", "2", container_name], capture_output=True, text=True)
+    if res.returncode == 0:
+        print_ok(f"Container '{container_name}' ({req_code}) restarted successfully.")
+        return 0
+    else:
+        print_error(f"Failed to restart container:\n{res.stderr.strip()}")
+        return res.returncode
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -608,9 +623,9 @@ def build_parser() -> argparse.ArgumentParser:
 Examples:
   ./hms-ctl.py start -e prod -c ar       Start Production container for Argentina
   ./hms-ctl.py start -e test -c br       Start Test (masked) container for Brazil
+  ./hms-ctl.py restart -e prod -c ar     Restart Production container cleanly
   ./hms-ctl.py stop -e prod -c ar        Stop Production container cleanly
-  ./hms-ctl.py restart -e test -c us     Restart/recreate Test container for USA
-  ./hms-ctl.py rm -e prod -c br -f       Force remove Production container for Brazil
+  ./hms-ctl.py rm -e prod -c ar -f       Force remove Production container
   ./hms-ctl.py status                    Display live status of all environments
   ./hms-ctl.py logs -e prod -c ar -f     Follow live logs for Production Argentina
   ./hms-ctl.py build                     Rebuild the HMS container image

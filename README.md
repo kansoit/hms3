@@ -174,7 +174,7 @@ HMS 3.0 includes an all-in-one Python CLI controller (**`hms-ctl.py`**) that sup
 | :--- | :--- | :--- |
 | `start` | `-e <prod\|test> -c <ar\|br\|us> [-b]` | Starts the container environment (refuses to overwrite existing instances; optionally `-b` to rebuild image). |
 | `stop` | `-e <prod\|test> -c <ar\|br\|us> [-t seconds]` | Cleanly stops the container (default graceful timeout: 2s). |
-| `restart` | `-e <prod\|test> -c <ar\|br\|us> [-b]` | Restarts or replaces the container with the selected configuration. |
+| `restart` | `-e <prod\|test> -c <ar\|br\|us> [-b]` | Restarts the existing container environment (optionally `-b` to rebuild image). |
 | `status` | `[-e <prod\|test>] [-c <ar\|br\|us>]` | Displays a live summary table of all environments (ports 8012 & 8013). |
 | `logs` | `-e <prod\|test> -c <ar\|br\|us> [-f] [-n lines]` | Displays or follows live container logs. |
 | `rm` | `-e <prod\|test> -c <ar\|br\|us> [-f]` | Removes the container cleanly without errors if missing (`-f` to force remove if running). |
@@ -194,12 +194,12 @@ HMS 3.0 includes an all-in-one Python CLI controller (**`hms-ctl.py`**) that sup
 # Follow live container logs
 ./hms-ctl.py logs -e prod -c ar -f
 
+# Restart existing container cleanly
+./hms-ctl.py restart -e prod -c ar
+
 # Clean stop and removal
 ./hms-ctl.py stop -e prod -c ar
 ./hms-ctl.py rm -e prod -c ar -f
-
-# Restart or replace instance with another country cleanly
-./hms-ctl.py restart -e prod -c br
 ```
 
 ---
