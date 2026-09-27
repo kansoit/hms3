@@ -237,7 +237,7 @@ class Paciente(models.Model):
         verbose_name="N° de Afiliado"
     )
     diagnostico_clinico = models.CharField(
-        max_length=255,
+        max_length=150,
         db_column='DIAGNOSTICO_CLINICO',
         verbose_name="Diagnóstico Principal"
     )

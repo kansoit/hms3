@@ -120,16 +120,16 @@ DIAGNOSTICOS_POR_ESPECIALIDADE = {
 }
 
 LOGRADOUROS_BRASIL = [
-    ("Av. Paulista", "Bela Vista", "São Paulo", "SP", "01311-200"),
-    ("Av. Brigadeiro Faria Lima", "Pinheiros", "São Paulo", "SP", "01452-000"),
-    ("Rua Oscar Freire", "Jardins", "São Paulo", "SP", "01426-001"),
-    ("Av. Ibirapuera", "Moema", "São Paulo", "SP", "04028-000"),
-    ("Rua Vergueiro", "Vila Mariana", "São Paulo", "SP", "04101-000"),
-    ("Av. Morumbi", "Morumbi", "São Paulo", "SP", "05650-000"),
-    ("Av. Atlântica", "Copacabana", "Rio de Janeiro", "RJ", "22070-000"),
-    ("Av. Vieira Souto", "Ipanema", "Rio de Janeiro", "RJ", "22420-000"),
-    ("Av. Afonso Pena", "Funcionários", "Belo Horizonte", "MG", "30130-002"),
-    ("Rua das Flores", "Centro", "Curitiba", "PR", "80020-000")
+    ("Av. Paulista", "São Paulo", "SP", "01311-200"),
+    ("Av. Brigadeiro Faria Lima", "São Paulo", "SP", "01452-000"),
+    ("Rua Oscar Freire", "São Paulo", "SP", "01426-001"),
+    ("Av. Ibirapuera", "São Paulo", "SP", "04028-000"),
+    ("Rua Vergueiro", "São Paulo", "SP", "04101-000"),
+    ("Av. Morumbi", "São Paulo", "SP", "05650-000"),
+    ("Av. Atlântica", "Rio de Janeiro", "RJ", "22070-000"),
+    ("Av. Vieira Souto", "Rio de Janeiro", "RJ", "22420-000"),
+    ("Av. Afonso Pena", "Belo Horizonte", "MG", "30130-002"),
+    ("Rua das Flores", "Curitiba", "PR", "80020-000")
 ]
 
 
@@ -268,7 +268,6 @@ class Command(BaseCommand):
                 TELEFONE_CELULAR NVARCHAR(25) NOT NULL,
                 EMAIL NVARCHAR(100) NOT NULL,
                 ENDERECO NVARCHAR(120) NOT NULL,
-                BAIRRO NVARCHAR(60) NOT NULL,
                 CIDADE NVARCHAR(60) NOT NULL,
                 ESTADO NVARCHAR(10) NOT NULL,
                 CEP NVARCHAR(10) NOT NULL,
@@ -279,6 +278,11 @@ class Command(BaseCommand):
                 MEDICO_ID INT NULL FOREIGN KEY REFERENCES MEDICOS(ID),
                 DATA_INTERNACAO DATE NOT NULL DEFAULT GETDATE()
             );
+
+            IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('PACIENTES') AND name = 'BAIRRO')
+            BEGIN
+                ALTER TABLE PACIENTES DROP COLUMN BAIRRO;
+            END;
 
             IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('PACIENTES') AND name = 'CEP')
             BEGIN
@@ -392,8 +396,8 @@ class Command(BaseCommand):
                         break
 
                 cpf = calcular_cpf_valido()
-                logradouro, bairro, cidade, estado, cep = random.choice(LOGRADOUROS_BRASIL)
-                rg = gerar_rg_brasileiro(estado)
+                logradouro, cidade, estado, cep = random.choice(LOGRADOUROS_BRASIL)
+                rg = generar_rg_brasileiro(estado)
                 numero_casa = random.randint(10, 3500)
                 comp = f", Apto {random.randint(11, 142)}" if random.random() > 0.4 else ""
                 endereco = f"{logradouro}, {numero_casa}{comp}"
@@ -436,7 +440,6 @@ class Command(BaseCommand):
                     telefone_celular=telefone,
                     email=email,
                     endereco=endereco,
-                    bairro=bairro,
                     cidade=cidade,
                     estado=estado,
                     cep=cep,

@@ -299,17 +299,17 @@
                     
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label small fw-bold text-muted">{{ txt.field_firstname }}</label>
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_firstname }} *</label>
                             <input type="text" class="form-control" name="first_name" id="input_nombre" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small fw-bold text-muted">{{ txt.field_lastname }}</label>
+                            <label class="form-label small fw-bold text-muted">{{ txt.field_lastname }} *</label>
                             <input type="text" class="form-control" name="last_name" id="input_apellido" required>
                         </div>
                         
                         <div class="col-md-4">
-                            <label class="form-label small fw-bold text-muted">{{ txt.col_doc1 }} *</label>
-                            <input type="text" class="form-control font-monospace" name="doc_primary" id="input_dni" required>
+                            <label class="form-label small fw-bold text-muted">{{ txt.col_doc1 }}</label>
+                            <input type="text" class="form-control font-monospace" name="doc_primary" id="input_dni">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label small fw-bold text-muted">{{ txt.col_doc2 }}</label>
@@ -442,6 +442,13 @@
 
     let deleteTargetId = null;
 
+    function escapeHtml(value) {
+        if (value === null || value === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(value);
+        return div.innerHTML;
+    }
+
     function verFichaPaciente(id) {
         document.getElementById('view-paciente-title').innerText = TXT.viewPatient;
         const modal = new bootstrap.Modal(document.getElementById('modalPaciente'));
@@ -452,72 +459,99 @@
         fetch('/api/patient/' + id + '/?_t=' + Date.now(), { cache: 'no-store' })
             .then(res => res.json())
             .then(data => {
-                const fullName = data.last_name + ', ' + data.first_name;
+                const fullName = (data.last_name || '') + ', ' + (data.first_name || '');
                 const doc1 = data.doc_primary || '';
                 const doc2 = data.doc_secondary || '';
                 const dob = data.date_of_birth || '';
                 const phone = data.phone || '';
                 const email = data.email || '';
-                const postalPart = data.postal_code ? ' <span class="badge bg-secondary font-monospace ms-1">' + (TXT.postalAbbr || 'CP') + ': ' + data.postal_code + '</span>' : '';
-                const address = (data.address || '') + ', ' + (data.city || '') + ' (' + (data.state || '') + ')' + postalPart;
+                const addressBase = (data.address || '') + (data.city ? ', ' + data.city : '') + (data.state ? ' (' + data.state + ')' : '');
+                const postalPart = data.postal_code || '';
                 const insurance = data.insurance_provider || '';
                 const insuranceNum = data.insurance_number || '';
                 const diagnosis = data.diagnosis || '';
                 const notes = data.clinical_notes || '';
                 const doctor = data.doctor_name || '';
 
+                // Estructura estática segura
                 body.innerHTML = `
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label text-muted small fw-bold mb-0">PACIENTE</label>
-                            <h5 class="fw-bold mb-0 text-dark">${fullName}</h5>
+                            <h5 class="fw-bold mb-0 text-dark" id="modal-field-fullname"></h5>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label text-muted small fw-bold mb-0">${TXT.colDoc1}</label>
-                            <div class="font-monospace fw-bold fs-6">${doc1}</div>
+                            <label class="form-label text-muted small fw-bold mb-0">${escapeHtml(TXT.colDoc1)}</label>
+                            <div class="font-monospace fw-bold fs-6" id="modal-field-doc1"></div>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label text-muted small fw-bold mb-0">${TXT.colDoc2}</label>
-                            <div class="font-monospace fw-bold fs-6 text-primary">${doc2}</div>
+                            <label class="form-label text-muted small fw-bold mb-0">${escapeHtml(TXT.colDoc2)}</label>
+                            <div class="font-monospace fw-bold fs-6 text-primary" id="modal-field-doc2"></div>
                         </div>
 
                         <hr class="my-2">
 
                         <div class="col-md-4">
-                            <label class="form-label text-muted small fw-bold mb-0">${TXT.dob}</label>
-                            <div>${dob}</div>
+                            <label class="form-label text-muted small fw-bold mb-0">${escapeHtml(TXT.dob)}</label>
+                            <div id="modal-field-dob"></div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label text-muted small fw-bold mb-0">${TXT.phone}</label>
-                            <div class="font-monospace">${phone}</div>
+                            <label class="form-label text-muted small fw-bold mb-0">${escapeHtml(TXT.phone)}</label>
+                            <div class="font-monospace" id="modal-field-phone"></div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label text-muted small fw-bold mb-0">${TXT.email}</label>
-                            <div>${email}</div>
+                            <label class="form-label text-muted small fw-bold mb-0">${escapeHtml(TXT.email)}</label>
+                            <div id="modal-field-email"></div>
                         </div>
 
                         <div class="col-md-5">
-                            <label class="form-label text-muted small fw-bold mb-0">${TXT.address}</label>
-                            <div>${address}</div>
+                            <label class="form-label text-muted small fw-bold mb-0">${escapeHtml(TXT.address)}</label>
+                            <div>
+                                <span id="modal-field-address"></span>
+                                <span class="badge bg-secondary font-monospace ms-1 d-none" id="modal-field-postal"></span>
+                            </div>
                         </div>
                         <div class="col-md-7">
-                            <label class="form-label text-muted small fw-bold mb-0">${TXT.insurance}</label>
+                            <label class="form-label text-muted small fw-bold mb-0">${escapeHtml(TXT.insurance)}</label>
                             <div class="d-flex align-items-center flex-wrap gap-1">
-                                <span class="badge bg-primary fs-6">${insurance}</span>
-                                <span class="font-monospace text-nowrap fw-semibold ms-1">#${insuranceNum}</span>
+                                <span class="badge bg-primary fs-6" id="modal-field-insurance"></span>
+                                <span class="font-monospace text-nowrap fw-semibold ms-1 d-none" id="modal-field-insurancenum"></span>
                             </div>
                         </div>
 
                         <div class="col-12 mt-3">
                             <div class="p-3 bg-light rounded border">
-                                <label class="form-label text-danger small fw-bold mb-1"><i class="fa-solid fa-lock me-1"></i> ${TXT.notes} & ${TXT.diagnosis}</label>
-                                <h6 class="fw-bold text-dark mt-1">${diagnosis}</h6>
-                                <p class="mb-0 text-muted small">${notes}</p>
-                                <div class="mt-2 text-muted small"><strong>${TXT.doctor || 'Médico'}:</strong> ${doctor}</div>
+                                <label class="form-label text-danger small fw-bold mb-1"><i class="fa-solid fa-lock me-1"></i> ${escapeHtml(TXT.notes)} &amp; ${escapeHtml(TXT.diagnosis)}</label>
+                                <h6 class="fw-bold text-dark mt-1" id="modal-field-diagnosis"></h6>
+                                <p class="mb-0 text-muted small" id="modal-field-notes"></p>
+                                <div class="mt-2 text-muted small"><strong>${escapeHtml(TXT.doctor || 'Médico')}:</strong> <span id="modal-field-doctor"></span></div>
                             </div>
                         </div>
                     </div>
                 `;
+
+                // Incorporación segura de datos dinámicos mediante textContent
+                document.getElementById('modal-field-fullname').textContent = fullName;
+                document.getElementById('modal-field-doc1').textContent = doc1;
+                document.getElementById('modal-field-doc2').textContent = doc2;
+                document.getElementById('modal-field-dob').textContent = dob;
+                document.getElementById('modal-field-phone').textContent = phone;
+                document.getElementById('modal-field-email').textContent = email;
+                document.getElementById('modal-field-address').textContent = addressBase;
+                if (postalPart) {
+                    const postalBadge = document.getElementById('modal-field-postal');
+                    postalBadge.textContent = (TXT.postalAbbr || 'CP') + ': ' + postalPart;
+                    postalBadge.classList.remove('d-none');
+                }
+                document.getElementById('modal-field-insurance').textContent = insurance;
+                if (insuranceNum) {
+                    const insNumSpan = document.getElementById('modal-field-insurancenum');
+                    insNumSpan.textContent = '#' + insuranceNum;
+                    insNumSpan.classList.remove('d-none');
+                }
+                document.getElementById('modal-field-diagnosis').textContent = diagnosis;
+                document.getElementById('modal-field-notes').textContent = notes;
+                document.getElementById('modal-field-doctor').textContent = doctor;
             })
             .catch(err => {
                 body.innerHTML = '<div class="alert alert-danger">Error al cargar los datos.</div>';

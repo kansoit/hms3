@@ -16,7 +16,7 @@ def dashboard(request):
     hms_env = os.getenv('HMS_ENV', 'prod').lower()
     country = os.getenv('HMS_COUNTRY', 'AR').upper()
     prefix = 'hms3' if hms_env == 'prod' else 'vhms3'
-    db_name = settings.DATABASES['default'].get('NAME', f"{prefix}_{country.lower()}")
+    db_name = str(settings.DATABASES['default'].get('NAME', f"{prefix}_{country.lower()}"))
     query_paciente = request.GET.get('q_paciente', '').strip()
     query_medico = request.GET.get('q_medico', '').strip()
 
@@ -131,7 +131,7 @@ def api_health(request):
     hms_env = os.getenv('HMS_ENV', 'prod').lower()
     country = os.getenv('HMS_COUNTRY', 'AR').upper()
     prefix = 'hms3' if hms_env == 'prod' else 'vhms3'
-    db_name = settings.DATABASES['default'].get('NAME', f"{prefix}_{country.lower()}")
+    db_name = str(settings.DATABASES['default'].get('NAME', f"{prefix}_{country.lower()}"))
     is_masked = (hms_env == 'test')
     return JsonResponse({
         'status': 'UP',

@@ -64,7 +64,7 @@ class Migration(migrations.Migration):
                 ('codigo_postal', models.CharField(db_column='CODIGO_POSTAL', max_length=10, verbose_name='Código Postal')),
                 ('obra_social', models.CharField(db_column='OBRA_SOCIAL', max_length=60, verbose_name='Obra Social / Cobertura')),
                 ('numero_afiliado', models.CharField(db_column='NUMERO_AFILIADO', max_length=30, verbose_name='N° de Afiliado')),
-                ('diagnostico_clinico', models.CharField(db_column='DIAGNOSTICO_CLINICO', max_length=255, verbose_name='Diagnóstico Principal')),
+                ('diagnostico_clinico', models.CharField(db_column='DIAGNOSTICO_CLINICO', max_length=150, verbose_name='Diagnóstico Principal')),
                 ('historia_clinica', models.TextField(db_column='HISTORIA_CLINICA', verbose_name='Historia Clínica / Evolución')),
                 ('fecha_ingreso', models.DateField(auto_now_add=True, db_column='FECHA_INGRESO', verbose_name='Fecha de Ingreso')),
                 ('medico_asignado', models.ForeignKey(blank=True, db_column='MEDICO_ID', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='pacientes', to='core.medico', verbose_name='Médico de Cabecera')),

@@ -240,13 +240,6 @@ class Paciente(models.Model):
         db_column='ENDERECO',
         verbose_name="Endereço"
     )
-    bairro = models.CharField(
-        max_length=60,
-        blank=True,
-        default='',
-        db_column='BAIRRO',
-        verbose_name="Bairro"
-    )
     cidade = models.CharField(
         max_length=60,
         blank=True,
