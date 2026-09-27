@@ -4,6 +4,7 @@ import pyodbc
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
+from core.synthetic_identifiers import generate_us_ssn as generate_valid_ssn, generate_us_npi as generate_valid_npi, generate_us_state_id
 
 FIRST_NAMES_MALE = [
     "James", "John", "Robert", "Michael", "William", "David", "Richard", 
@@ -131,40 +132,6 @@ LOCATIONS_USA = [
     ("Congress Avenue", "Austin", "TX", "78701"),
     ("Pike Street", "Seattle", "WA", "98101")
 ]
-
-
-def generate_valid_ssn() -> str:
-    """
-    Generates a realistic SSN compliant with official Social Security Administration rules:
-    - Area (AAA): not 000, not 666, not 900-999
-    - Group (GG): not 00
-    - Serial (SSSS): not 0000
-    """
-    valid_areas = [a for a in range(1, 900) if a != 666]
-    area = random.choice(valid_areas)
-    group = random.randint(1, 99)
-    serial = random.randint(1, 9999)
-    return f"{area:03d}-{group:02d}-{serial:04d}"
-
-
-def generate_valid_npi() -> str:
-    """
-    Generates a 10-digit National Provider Identifier (NPI) with a valid
-    Luhn algorithm (Modulo 10) check digit, prefixed by 80840 per CMS standards.
-    """
-    base_9 = "1" + "".join(str(random.randint(0, 9)) for _ in range(8))
-    full_prefix = "80840" + base_9
-    digits = [int(c) for c in full_prefix]
-    
-    total = 0
-    for i, d in enumerate(reversed(digits)):
-        if i % 2 == 0:
-            doubled = d * 2
-            total += (doubled - 9) if doubled > 9 else doubled
-        else:
-            total += d
-    check_digit = (10 - (total % 10)) % 10
-    return base_9 + str(check_digit)
 
 
 class Command(BaseCommand):
@@ -397,7 +364,7 @@ class Command(BaseCommand):
 
                 ssn = generate_valid_ssn()
                 street, city, state, zip_code = random.choice(LOCATIONS_USA)
-                state_id = f"{state}-DL{random.randint(10000000, 99999999)}"
+                state_id = generate_us_state_id(state)
                 street_num = random.randint(10, 9999)
                 apt = f", Apt {random.randint(1, 24)}{random.choice(['A', 'B', 'C', 'D'])}" if random.random() > 0.4 else ""
                 address = f"{street_num} {street}{apt}"

@@ -307,7 +307,7 @@ podman exec hms3_prod python manage.py seed_argentina --clean
 ### Step 3: Profile the Non-Production VDB
 1. Connect **Perforce Delphix Continuous Compliance** to the newly provisioned non-production VDB (`vhms3_ar`).
 2. Execute the **Delphix Profiler** directly against the VDB.
-   * *Critical Presales Advantage*: Running discovery on the non-production VDB rather than directly against the production database avoids putting profiling query overhead, table locks, or compliance exposure onto the simulated production system.
+   * *Critical Presales Advantage*: Running discovery on the non-production VDB keeps the profiling workload and its associated operational impact (query overhead, table locks) away from the simulated production database.
 3. Demonstrate automated discovery:
    * 🇦🇷 **Argentina**: `DNI`, `CUIL` (matched by `AR_DNI`, `AR_CUIL`/`AR_CUIT` in Perforce Profile Sets), `APELLIDO`, `NOMBRE`, `DIRECCION`, `HISTORIA_CLINICA`.
    * 🇧🇷 **Brazil**: `CPF`, `RG`, `CRM`, `SOBRENOME`, `NOME`, `CEP`, `PRONTUARIO`.
@@ -353,7 +353,7 @@ podman exec hms3_prod python manage.py seed_argentina --clean
 
 ## 🌐 REST API Endpoints Specification
 
-HMS 3.0 provides a standardized, English-first RESTful API for programmatically inspecting, creating, updating, and verifying data across environments.
+HMS 3.0 provides a standardized, English-first RESTful API with normalized patient fields and region-specific medical identifiers where appropriate for programmatically inspecting, creating, updating, and verifying data across environments.
 
 > [!NOTE]
 > The API is intentionally lightweight and unauthenticated for isolated laboratory and demonstration use. It is not intended to represent a production healthcare security model.
@@ -463,9 +463,10 @@ hms3/
 │   │   ├── models_ar.py         # Argentine schema (PACIENTES, MEDICOS, DNI, CUIL)
 │   │   ├── models_br.py         # Brazilian schema (PACIENTES, MEDICOS, CPF, RG, CRM)
 │   │   ├── models_us.py         # US schema (PATIENTS, DOCTORS, SSN, NPI, ZIP)
+│   │   ├── synthetic_identifiers.py # Shared synthetic generators & collision avoidance
 │   │   ├── views.py             # Multi-country dashboard, detail API, save/delete
 │   │   ├── migrations/
-│   │   │   └── 0001_initial.py  # Baseline schema migration
+│   │   │   └── 0001_initial.py  # Argentine baseline migration (see note below)
 │   │   └── management/
 │   │       └── commands/
 │   │           ├── seed_argentina.py  # DNI + Modulo 11 CUIL generator
@@ -487,6 +488,9 @@ hms3/
 ├── .env-test-us.example         # Test VDB USA configuration template
 └── README.md                    # Comprehensive documentation
 ```
+
+> [!NOTE]
+> **Database Migrations & Schemas**: `0001_initial.py` is the original Argentine baseline Django migration. The regional SQL Server demo schemas for AR, BR, and US are created and maintained by the country-specific seed commands (`seed_argentina`, `seed_brazil`, `seed_usa`).
 
 ---
 

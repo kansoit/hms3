@@ -4,6 +4,7 @@ import pyodbc
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
+from core.synthetic_identifiers import generate_br_cpf as calcular_cpf_valido, generate_br_rg as gerar_rg_brasileiro
 
 NOMBRES_MASCULINOS = [
     "Arthur", "Bernardo", "Davi", "Gabriel", "Heitor", "Lucas", "Matheus", "Pedro", 
@@ -131,37 +132,6 @@ LOGRADOUROS_BRASIL = [
     ("Av. Afonso Pena", "Belo Horizonte", "MG", "30130-002"),
     ("Rua das Flores", "Curitiba", "PR", "80020-000")
 ]
-
-
-def calcular_cpf_valido() -> str:
-    """
-    Gera um CPF 100% válido com os dois dígitos verificadores calculados (Módulo 11)
-    conforme padrão oficial da Receita Federal do Brasil para LGPD.
-    """
-    nove_digitos = [random.randint(0, 9) for _ in range(9)]
-    
-    # 1º Dígito verificador
-    soma1 = sum(d * (10 - i) for i, d in enumerate(nove_digitos))
-    resto1 = soma1 % 11
-    d1 = 0 if resto1 < 2 else (11 - resto1)
-    
-    # 2º Dígito verificador
-    dez_digitos = nove_digitos + [d1]
-    soma2 = sum(d * (11 - i) for i, d in enumerate(dez_digitos))
-    resto2 = soma2 % 11
-    d2 = 0 if resto2 < 2 else (11 - resto2)
-    
-    digs = "".join(str(d) for d in nove_digitos)
-    return f"{digs[:3]}.{digs[3:6]}.{digs[6:9]}-{d1}{d2}"
-
-
-def gerar_rg_brasileiro(estado: str) -> str:
-    """Gera formato realista de RG (Registro Geral) brasileiro."""
-    p1 = random.randint(10, 60)
-    p2 = random.randint(100, 999)
-    p3 = random.randint(100, 999)
-    dv = random.choice([str(random.randint(0, 9)), "X"])
-    return f"{estado}-{p1}.{p2}.{p3}-{dv}"
 
 
 class Command(BaseCommand):

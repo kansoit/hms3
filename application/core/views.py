@@ -1,11 +1,17 @@
+import logging
 import os
+import json
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Q
 from django.conf import settings
 from .models import Paciente, Medico, Especialidad
 from .i18n import get_country_text
+from .synthetic_identifiers import generate_unique_patient_identifiers
+
+logger = logging.getLogger(__name__)
 
 def dashboard(request):
     """
@@ -361,18 +367,10 @@ def patient_save(request):
             'message': msg
         }, status=400)
 
-    if not doc_primary:
-        import random
-        if country == 'US':
-            doc_primary = f"ID{random.randint(10000000, 99999999)}"
-        elif country == 'BR':
-            doc_primary = f"{random.randint(10000000, 99999999)}"
-        else:
-            doc_primary = f"{random.randint(10000000, 99999999)}"
-
     if patient_id:
         paciente = get_object_or_404(Paciente, pk=patient_id)
-        paciente.dni = doc_primary
+        if doc_primary:
+            paciente.dni = doc_primary
         if doc_secondary:
             paciente.cuil = doc_secondary
         paciente.apellido = last_name
@@ -393,9 +391,24 @@ def patient_save(request):
         if doctor_id and doctor_id.isdigit():
             paciente.medico_asignado_id = int(doctor_id)
     else:
+        try:
+            doc_primary, doc_secondary = generate_unique_patient_identifiers(
+                country=country,
+                paciente_model=Paciente,
+                doc_primary=doc_primary or None,
+                doc_secondary=doc_secondary or None,
+                exclude_id=None
+            )
+        except Exception:
+            logger.exception("Error generating synthetic identifiers for patient")
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Database error while generating synthetic identifiers.'
+            }, status=400)
+
         paciente = Paciente()
         paciente.dni = doc_primary
-        paciente.cuil = doc_secondary or (f"999-{doc_primary[-4:]}" if country == 'US' else (f"999.{doc_primary[-3:]}-00" if country == 'BR' else f"20-{doc_primary}-9"))
+        paciente.cuil = doc_secondary
         paciente.apellido = last_name
         paciente.nombre = first_name
         if dob:
@@ -420,9 +433,10 @@ def patient_save(request):
     try:
         paciente.save()
     except Exception as e:
+        logger.exception("Error saving patient")
         return JsonResponse({
             'status': 'error',
-            'message': f'Database error while saving patient: {str(e)}'
+            'message': 'Database error while saving patient.'
         }, status=400)
 
     action = "updated" if patient_id else "created"
@@ -442,7 +456,14 @@ def patient_delete(request, pk):
     """
     paciente = get_object_or_404(Paciente, pk=pk)
     full_name = f"{paciente.apellido}, {paciente.nombre}"
-    paciente.delete()
+    try:
+        paciente.delete()
+    except Exception as e:
+        logger.exception("Error deleting patient")
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Database error while deleting patient.'
+        }, status=400)
     return JsonResponse({
         'status': 'ok',
         'id': pk,

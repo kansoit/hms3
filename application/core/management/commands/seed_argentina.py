@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
 from core.models import Especialidad, Medico, Paciente
+from core.synthetic_identifiers import generate_ar_cuil as calcular_cuil, generate_ar_dni
 
 NOMBRES_MASCULINOS = [
     "Mateo", "Bautista", "Juan", "Felipe", "Bruno", "Santiago", "Joaquín", "Lucas", 
@@ -135,33 +136,6 @@ LOCALIDADES = [
     ("Córdoba Capital", "Córdoba", "X5000"),
     ("Rosario", "Santa Fe", "S2000")
 ]
-
-
-def calcular_cuil(dni_str: str, genero: str) -> str:
-    """
-    Calcula el CUIL matemáticamente válido (Módulo 11) compatible con Delphix ar-mask.
-    """
-    prefix = 27 if genero == 'F' else 20
-    dni_int = int(dni_str)
-    weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
-
-    def _eval(p, d):
-        digits = [int(x) for x in f"{p:02d}{d:08d}"]
-        s = sum(w * d for w, d in zip(weights, digits))
-        return s % 11
-
-    residue = _eval(prefix, dni_int)
-    if residue == 0:
-        dv = 0
-    elif residue == 1:
-        # Fallback a prefijo 23
-        prefix = 23
-        residue2 = _eval(prefix, dni_int)
-        dv = 0 if residue2 == 0 else (11 - residue2)
-    else:
-        dv = 11 - residue
-
-    return f"{prefix}-{dni_str}-{dv}"
 
 
 class Command(BaseCommand):
