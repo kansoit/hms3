@@ -230,10 +230,10 @@ class Command(BaseCommand):
                 TELEFONE_CELULAR NVARCHAR(25) NOT NULL,
                 EMAIL NVARCHAR(100) NOT NULL,
                 ENDERECO NVARCHAR(120) NOT NULL,
-                BAIRRO NVARCHAR(60) NOT NULL DEFAULT 'Centro',
-                CIDADE NVARCHAR(60) NOT NULL DEFAULT 'São Paulo',
-                ESTADO NVARCHAR(10) NOT NULL DEFAULT 'SP',
-                CEP NVARCHAR(10) NOT NULL DEFAULT '01310-100',
+                BAIRRO NVARCHAR(60) NOT NULL,
+                CIDADE NVARCHAR(60) NOT NULL,
+                ESTADO NVARCHAR(10) NOT NULL,
+                CEP NVARCHAR(10) NOT NULL,
                 CONVENIO NVARCHAR(60) NOT NULL,
                 NUMERO_CARTEIRINHA NVARCHAR(30) NOT NULL,
                 DIAGNOSTICO NVARCHAR(150) NOT NULL,
@@ -241,7 +241,22 @@ class Command(BaseCommand):
                 MEDICO_ID INT NULL FOREIGN KEY REFERENCES MEDICOS(ID),
                 DATA_INTERNACAO DATE NOT NULL DEFAULT GETDATE()
             );
+
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('PACIENTES') AND name = 'CEP')
+            BEGIN
+                ALTER TABLE PACIENTES ADD CEP NVARCHAR(10) NULL;
+                EXEC('UPDATE PACIENTES SET CEP = CASE ESTADO
+                    WHEN ''SP'' THEN ''01310-100''
+                    WHEN ''RJ'' THEN ''20040-002''
+                    WHEN ''MG'' THEN ''30130-100''
+                    WHEN ''PR'' THEN ''80020-010''
+                    ELSE ''01000-000''
+                END WHERE CEP IS NULL;');
+                ALTER TABLE PACIENTES ALTER COLUMN CEP NVARCHAR(10) NOT NULL;
+            END;
             """)
+            if not connection.get_autocommit():
+                connection.commit()
 
     def handle(self, *args, **options):
         self.asegurar_base_dados()

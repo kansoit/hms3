@@ -231,20 +231,37 @@ class Command(BaseCommand):
                 TELEFONO_CELULAR NVARCHAR(25) NOT NULL,
                 EMAIL NVARCHAR(100) NOT NULL,
                 DIRECCION NVARCHAR(120) NOT NULL,
-                LOCALIDAD NVARCHAR(60) NOT NULL DEFAULT 'CABA',
-                PROVINCIA NVARCHAR(60) NOT NULL DEFAULT 'Buenos Aires',
-                CODIGO_POSTAL NVARCHAR(10) NULL DEFAULT 'C1425',
+                LOCALIDAD NVARCHAR(60) NOT NULL,
+                PROVINCIA NVARCHAR(60) NOT NULL,
+                CODIGO_POSTAL NVARCHAR(10) NOT NULL,
                 OBRA_SOCIAL NVARCHAR(60) NOT NULL,
                 NUMERO_AFILIADO NVARCHAR(30) NOT NULL,
-                DIAGNOSTICO_CLINICO NVARCHAR(150) NOT NULL,
+                DIAGNOSTICO_CLINICO NVARCHAR(255) NOT NULL,
                 HISTORIA_CLINICA NVARCHAR(MAX) NOT NULL,
                 MEDICO_ID INT NULL FOREIGN KEY REFERENCES MEDICOS(ID),
                 FECHA_INGRESO DATE NOT NULL DEFAULT GETDATE()
             );
 
             IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('PACIENTES') AND name = 'CODIGO_POSTAL')
-                ALTER TABLE PACIENTES ADD CODIGO_POSTAL NVARCHAR(10) NULL DEFAULT 'C1425';
+            BEGIN
+                ALTER TABLE PACIENTES ADD CODIGO_POSTAL NVARCHAR(10) NULL;
+                EXEC('UPDATE PACIENTES SET CODIGO_POSTAL = CASE LOCALIDAD
+                    WHEN ''CABA'' THEN ''C1002''
+                    WHEN ''Vicente López'' THEN ''B1638''
+                    WHEN ''San Isidro'' THEN ''B1642''
+                    WHEN ''Quilmes'' THEN ''B1878''
+                    WHEN ''Ramos Mejía'' THEN ''B1704''
+                    WHEN ''Morón'' THEN ''B1708''
+                    WHEN ''La Plata'' THEN ''B1900''
+                    WHEN ''Córdoba Capital'' THEN ''X5000''
+                    WHEN ''Rosario'' THEN ''S2000''
+                    ELSE ''C1000''
+                END WHERE CODIGO_POSTAL IS NULL;');
+                ALTER TABLE PACIENTES ALTER COLUMN CODIGO_POSTAL NVARCHAR(10) NOT NULL;
+            END;
             """)
+            if not connection.get_autocommit():
+                connection.commit()
 
     def handle(self, *args, **options):
         self.asegurar_base_datos()

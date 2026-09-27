@@ -163,11 +163,8 @@ class Paciente(models.Model):
     )
     codigo_postal = models.CharField(
         max_length=10,
-        default='C1425',
         db_column='CODIGO_POSTAL',
-        verbose_name="Código Postal",
-        null=True,
-        blank=True
+        verbose_name="Código Postal"
     )
     obra_social = models.CharField(
         max_length=60,

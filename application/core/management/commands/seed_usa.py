@@ -233,9 +233,9 @@ class Command(BaseCommand):
                 PHONE_NUMBER NVARCHAR(25) NOT NULL,
                 EMAIL NVARCHAR(100) NOT NULL,
                 ADDRESS NVARCHAR(120) NOT NULL,
-                CITY NVARCHAR(60) NOT NULL DEFAULT 'New York',
-                STATE NVARCHAR(10) NOT NULL DEFAULT 'NY',
-                ZIP_CODE NVARCHAR(10) NOT NULL DEFAULT '10001',
+                CITY NVARCHAR(60) NOT NULL,
+                STATE NVARCHAR(10) NOT NULL,
+                ZIP_CODE NVARCHAR(10) NOT NULL,
                 INSURANCE_PROVIDER NVARCHAR(60) NOT NULL,
                 POLICY_NUMBER NVARCHAR(30) NOT NULL,
                 DIAGNOSIS NVARCHAR(150) NOT NULL,
@@ -243,7 +243,23 @@ class Command(BaseCommand):
                 DOCTOR_ID INT NULL FOREIGN KEY REFERENCES DOCTORS(ID),
                 ADMISSION_DATE DATE NOT NULL DEFAULT GETDATE()
             );
+
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('PATIENTS') AND name = 'ZIP_CODE')
+            BEGIN
+                ALTER TABLE PATIENTS ADD ZIP_CODE NVARCHAR(10) NULL;
+                EXEC('UPDATE PATIENTS SET ZIP_CODE = CASE STATE
+                    WHEN ''NY'' THEN ''10001''
+                    WHEN ''CA'' THEN ''90210''
+                    WHEN ''IL'' THEN ''60601''
+                    WHEN ''TX'' THEN ''77001''
+                    WHEN ''FL'' THEN ''33101''
+                    ELSE ''10001''
+                END WHERE ZIP_CODE IS NULL;');
+                ALTER TABLE PATIENTS ALTER COLUMN ZIP_CODE NVARCHAR(10) NOT NULL;
+            END;
             """)
+            if not connection.get_autocommit():
+                connection.commit()
 
     def handle(self, *args, **options):
         self.ensure_database()

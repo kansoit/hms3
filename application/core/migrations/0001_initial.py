@@ -61,6 +61,7 @@ class Migration(migrations.Migration):
                 ('direccion', models.CharField(db_column='DIRECCION', max_length=120, verbose_name='Dirección')),
                 ('localidad', models.CharField(db_column='LOCALIDAD', default='CABA', max_length=60, verbose_name='Localidad')),
                 ('provincia', models.CharField(db_column='PROVINCIA', default='Buenos Aires', max_length=60, verbose_name='Provincia')),
+                ('codigo_postal', models.CharField(db_column='CODIGO_POSTAL', max_length=10, verbose_name='Código Postal')),
                 ('obra_social', models.CharField(db_column='OBRA_SOCIAL', max_length=60, verbose_name='Obra Social / Cobertura')),
                 ('numero_afiliado', models.CharField(db_column='NUMERO_AFILIADO', max_length=30, verbose_name='N° de Afiliado')),
                 ('diagnostico_clinico', models.CharField(db_column='DIAGNOSTICO_CLINICO', max_length=255, verbose_name='Diagnóstico Principal')),
