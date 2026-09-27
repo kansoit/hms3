@@ -160,9 +160,49 @@ DB_PASSWORD=YourStrongPasswordHere  # SQL Server Password
 
 ---
 
-## 🚀 Deployment Guide (`launch_hms.sh`)
+## 🚀 Container Orchestration CLI (`hms-ctl.py`)
 
-Deploying any environment and jurisdiction is handled with a single bash script:
+HMS 3.0 includes an all-in-one Python CLI controller (**`hms-ctl.py`**) that supports both **Podman** and **Docker** automatically with zero host dependencies (uses Python standard library).
+
+```bash
+./hms-ctl.py <command> -e <prod|test> -c <ar|br|us>
+```
+
+### Available Commands
+
+| Command | Arguments | Description |
+| :--- | :--- | :--- |
+| `start` | `-e <prod\|test> -c <ar\|br\|us> [-b]` | Starts the specified container environment (optionally `-b` to rebuild image). |
+| `stop` | `-e <prod\|test> [-t seconds]` | Cleanly stops the container (default graceful timeout: 2s). |
+| `restart` | `-e <prod\|test> -c <ar\|br\|us>` | Restarts the container with the selected configuration. |
+| `status` | *(none)* | Displays a live summary table of all environments (ports 8012 & 8013). |
+| `logs` | `-e <prod\|test> [-f] [-n lines]` | Displays or follows live container logs. |
+| `rm` | `-e <prod\|test> [-f]` | Removes the specified container cleanly without throwing errors if missing. |
+| `build` | `[-t tag] [--no-cache]` | Rebuilds the HMS 3.0 container image. |
+
+### CLI Examples
+
+```bash
+# Start environments
+./hms-ctl.py start -e prod -c ar       # Production Argentina on port 8012
+./hms-ctl.py start -e test -c br       # Non-Production (masked) Brazil on port 8013
+
+# Check status of both environments
+./hms-ctl.py status
+
+# Follow logs in real time
+./hms-ctl.py logs -e prod -f
+
+# Clean stop and removal
+./hms-ctl.py stop -e prod
+./hms-ctl.py rm -e prod -f
+```
+
+---
+
+## 📜 Legacy Deployment Script (`launch_hms.sh`)
+
+Deploying can also be done via the legacy bash script:
 
 ```bash
 ./launch_hms.sh [prod|test] [ar|br|us]
