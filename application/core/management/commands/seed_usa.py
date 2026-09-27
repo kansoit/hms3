@@ -7,18 +7,33 @@ from django.db import connection, transaction
 
 FIRST_NAMES_MALE = [
     "James", "John", "Robert", "Michael", "William", "David", "Richard", 
-    "Joseph", "Thomas", "Charles", "Daniel", "Matthew", "Anthony", "Mark", "Donald"
+    "Joseph", "Thomas", "Charles", "Daniel", "Matthew", "Anthony", "Mark", "Donald", 
+    "Steven", "Andrew", "Paul", "Joshua", "Kenneth", "Kevin", "Brian", "Timothy", 
+    "Ronald", "Jason", "Edward", "Jeffrey", "Ryan", "Jacob", "Gary", "Nicholas", 
+    "Eric", "Jonathan", "Stephen", "Larry", "Justin", "Scott", "Brandon", "Benjamin", 
+    "Samuel", "Gregory", "Alexander", "Patrick", "Frank", "Raymond", "Jack", "Dennis", 
+    "Jerry", "Tyler", "Aaron", "Henry", "Douglas", "Peter", "Zachary", "Nathan"
 ]
 
 FIRST_NAMES_FEMALE = [
     "Mary", "Patricia", "Jennifer", "Linda", "Elizabeth", "Barbara", "Susan", 
-    "Jessica", "Sarah", "Karen", "Lisa", "Nancy", "Betty", "Margaret", "Sandra"
+    "Jessica", "Sarah", "Karen", "Lisa", "Nancy", "Betty", "Margaret", "Sandra", 
+    "Ashley", "Kimberly", "Emily", "Donna", "Michelle", "Carol", "Amanda", "Melissa", 
+    "Deborah", "Stephanie", "Rebecca", "Sharon", "Laura", "Cynthia", "Kathleen", "Amy", 
+    "Angela", "Shirley", "Anna", "Brenda", "Pamela", "Emma", "Nicole", "Helen", 
+    "Samantha", "Katherine", "Christine", "Debra", "Rachel", "Carolyn", "Janet", 
+    "Catherine", "Maria", "Heather", "Diane", "Olivia", "Ava", "Sophia", "Chloe"
 ]
 
 LAST_NAMES = [
     "Smith", "Johnson", "Williams", "Brown", "Jones", "Miller", "Davis", 
-    "Wilson", "Anderson", "Taylor", "Thomas", "Moore", "Jackson", "Martin", "Lee",
-    "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis"
+    "Wilson", "Anderson", "Taylor", "Thomas", "Moore", "Jackson", "Martin", "Lee", 
+    "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis", 
+    "Robinson", "Walker", "Young", "Allen", "King", "Wright", "Scott", "Torres", 
+    "Nguyen", "Hill", "Flores", "Green", "Adams", "Nelson", "Baker", "Hall", 
+    "Rivera", "Campbell", "Mitchell", "Carter", "Roberts", "Gomez", "Phillips", 
+    "Evans", "Turner", "Diaz", "Parker", "Cruz", "Edwards", "Collins", "Reyes", 
+    "Stewart", "Morris", "Morales", "Murphy", "Cook", "Rogers", "Gutierrez", "Ortiz"
 ]
 
 SPECIALTIES_USA = [
@@ -197,9 +212,32 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Error checking/creating database '{target_db}': {e}"))
             raise
 
-    def ensure_tables(self):
-        """Creates US tables in SQL Server if not already present."""
+    def ensure_tables(self, drop_first=False):
+        """Creates US tables in SQL Server if not already present, or recreates if drop_first=True."""
         with connection.cursor() as cursor:
+            cursor.execute("""
+            SELECT COUNT(*) FROM sys.tables WHERE name = 'PATIENTS';
+            """)
+            has_patients = cursor.fetchone()[0] > 0
+            if has_patients and not drop_first:
+                cursor.execute("""
+                SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('PATIENTS') AND name = 'SSN';
+                """)
+                if cursor.fetchone()[0] == 0:
+                    self.stdout.write(self.style.WARNING("-> Detected incompatible previous schema in PATIENTS. Recreating tables..."))
+                    drop_first = True
+
+            if drop_first:
+                self.stdout.write(self.style.WARNING("-> Dropping previous tables for clean recreation..."))
+                cursor.execute("""
+                IF OBJECT_ID('dbo.PATIENTS', 'U') IS NOT NULL DROP TABLE dbo.PATIENTS;
+                IF OBJECT_ID('dbo.DOCTORS', 'U') IS NOT NULL DROP TABLE dbo.DOCTORS;
+                IF OBJECT_ID('dbo.SPECIALTIES', 'U') IS NOT NULL DROP TABLE dbo.SPECIALTIES;
+                IF OBJECT_ID('dbo.PACIENTES', 'U') IS NOT NULL DROP TABLE dbo.PACIENTES;
+                IF OBJECT_ID('dbo.MEDICOS', 'U') IS NOT NULL DROP TABLE dbo.MEDICOS;
+                IF OBJECT_ID('dbo.ESPECIALIDADES', 'U') IS NOT NULL DROP TABLE dbo.ESPECIALIDADES;
+                """)
+
             cursor.execute("""
             IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SPECIALTIES')
             CREATE TABLE SPECIALTIES (
@@ -263,18 +301,35 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.ensure_database()
-        self.ensure_tables()
+
+        if options['clean']:
+            self.stdout.write(self.style.WARNING("Cleaning and recreating US tables from scratch (Reset IDs to 1)..."))
+            self.ensure_tables(drop_first=True)
+        else:
+            self.ensure_tables(drop_first=False)
 
         with transaction.atomic():
-            if options['clean']:
-                self.stdout.write(self.style.WARNING("Cleaning previous US records and resetting identities to 0..."))
-                with connection.cursor() as cursor:
-                    cursor.execute("DELETE FROM PATIENTS;")
-                    cursor.execute("DELETE FROM DOCTORS;")
-                    cursor.execute("DELETE FROM SPECIALTIES;")
-                    cursor.execute("DBCC CHECKIDENT ('PATIENTS', RESEED, 0);")
-                    cursor.execute("DBCC CHECKIDENT ('DOCTORS', RESEED, 0);")
-                    cursor.execute("DBCC CHECKIDENT ('SPECIALTIES', RESEED, 0);")
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                IF (SELECT COUNT(*) FROM PATIENTS) > 0 DELETE FROM PATIENTS;
+                IF (SELECT COUNT(*) FROM DOCTORS) > 0 DELETE FROM DOCTORS;
+                IF (SELECT COUNT(*) FROM SPECIALTIES) > 0 DELETE FROM SPECIALTIES;
+
+                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('PATIENTS')) IS NULL
+                    DBCC CHECKIDENT ('PATIENTS', RESEED, 1);
+                ELSE
+                    DBCC CHECKIDENT ('PATIENTS', RESEED, 0);
+
+                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('DOCTORS')) IS NULL
+                    DBCC CHECKIDENT ('DOCTORS', RESEED, 1);
+                ELSE
+                    DBCC CHECKIDENT ('DOCTORS', RESEED, 0);
+
+                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('SPECIALTIES')) IS NULL
+                    DBCC CHECKIDENT ('SPECIALTIES', RESEED, 1);
+                ELSE
+                    DBCC CHECKIDENT ('SPECIALTIES', RESEED, 0);
+                """)
 
             from core.models_us import Specialty, Doctor, Patient
 
@@ -294,10 +349,16 @@ class Command(BaseCommand):
             # 2. Doctors
             self.stdout.write(f"-> Generating {cant_medicos} US physicians with NPI and State Licenses...")
             doctors_created = []
+            used_doc_names = set()
             for i in range(cant_medicos):
                 gender = 'M' if random.random() > 0.5 else 'F'
-                first_name = random.choice(FIRST_NAMES_MALE if gender == 'M' else FIRST_NAMES_FEMALE)
-                last_name = random.choice(LAST_NAMES)
+                for _ in range(50):
+                    first_name = random.choice(FIRST_NAMES_MALE if gender == 'M' else FIRST_NAMES_FEMALE)
+                    last_name = random.choice(LAST_NAMES)
+                    if (first_name, last_name) not in used_doc_names:
+                        used_doc_names.add((first_name, last_name))
+                        break
+
                 npi = generate_valid_npi()
                 ssn = generate_valid_ssn()
                 state_code = random.choice(['NY', 'CA', 'IL', 'TX', 'GA', 'MA'])
@@ -305,7 +366,7 @@ class Command(BaseCommand):
                 state_lic = f"MD-{state_code}-{random.randint(10000, 99999)}"
                 spec = specialties_objs[i % len(specialties_objs)]
                 phone = f"+1 ({random.randint(201, 989)}) {random.randint(200, 999)}-{random.randint(1000, 9999)}"
-                email = f"dr.{first_name.lower()}.{last_name.lower()}@metropolitanhospital.org"
+                email = f"dr.{first_name.lower().replace(' ', '')}.{last_name.lower().replace(' ', '')}@metropolitanhospital.org"
 
                 doc = Doctor.objects.create(
                     npi=npi,
@@ -323,11 +384,17 @@ class Command(BaseCommand):
             # 3. Patients
             self.stdout.write(f"-> Generating {cant_pacientes} US patients with HIPAA-compliant PHI data...")
             today = date.today()
+            used_pat_names = set(used_doc_names)
 
             for j in range(cant_pacientes):
                 gender = 'M' if random.random() > 0.5 else 'F'
-                first_name = random.choice(FIRST_NAMES_MALE if gender == 'M' else FIRST_NAMES_FEMALE)
-                last_name = random.choice(LAST_NAMES)
+                for _ in range(50):
+                    first_name = random.choice(FIRST_NAMES_MALE if gender == 'M' else FIRST_NAMES_FEMALE)
+                    last_name = random.choice(LAST_NAMES)
+                    if (first_name, last_name) not in used_pat_names:
+                        used_pat_names.add((first_name, last_name))
+                        break
+
                 ssn = generate_valid_ssn()
                 street, city, state, zip_code = random.choice(LOCATIONS_USA)
                 state_id = f"{state}-DL{random.randint(10000000, 99999999)}"
@@ -362,7 +429,7 @@ class Command(BaseCommand):
                     diag_title, diag_notes = ("Routine Clinical Preventive Checkup", "Comprehensive periodic health examination without acute complaints.")
 
                 phone = f"+1 ({random.randint(201, 989)}) {random.randint(200, 999)}-{random.randint(1000, 9999)}"
-                email = f"{first_name.lower()}.{last_name.lower()}{random.randint(10, 99)}@gmail.com"
+                email = f"{first_name.lower().replace(' ', '')}.{last_name.lower().replace(' ', '')}{random.randint(10, 99)}@gmail.com"
 
                 Patient.objects.create(
                     ssn=ssn,

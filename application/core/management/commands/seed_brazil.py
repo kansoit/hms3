@@ -6,19 +6,34 @@ from django.core.management.base import BaseCommand
 from django.db import connection, transaction
 
 NOMBRES_MASCULINOS = [
-    "Lucas", "Gabriel", "Matheus", "Felipe", "Rodrigo", "Gustavo", "Leonardo", 
-    "Bruno", "Thiago", "Rafael", "Pedro", "Henrique", "Marcelo", "Vinicius", "Eduardo"
+    "Arthur", "Bernardo", "Davi", "Gabriel", "Heitor", "Lucas", "Matheus", "Pedro", 
+    "Lorenzo", "Enzo", "Cauã", "Thales", "Felipe", "Rodrigo", "Gustavo", "Leonardo", 
+    "Bruno", "Thiago", "Rafael", "Henrique", "Marcelo", "Vinicius", "Eduardo", "Caio", 
+    "Alexandre", "Murilo", "Otávio", "Diego", "Samuel", "Danilo", "Guilherme", "Renato", 
+    "Igor", "Leandro", "Fernando", "André", "Fábio", "Ricardo", "Vitor", "Breno", 
+    "Yuri", "Luiz", "César", "Erick", "Wagner", "Renan", "Daniel", "Marcos", 
+    "Paulo", "Cristiano", "Everton", "Fabrício", "Tiago", "Maurício"
 ]
 
 NOMBRES_FEMENINOS = [
-    "Juliana", "Beatriz", "Mariana", "Camila", "Larissa", "Fernanda", "Gabriela", 
-    "Leticia", "Amanda", "Bruna", "Luiza", "Carolina", "Natalia", "Jessica", "Aline"
+    "Alice", "Helena", "Laura", "Manuela", "Sophia", "Isabella", "Heloísa", "Luiza", 
+    "Júlia", "Lorena", "Lívia", "Giovanna", "Beatriz", "Mariana", "Camila", "Larissa", 
+    "Fernanda", "Gabriela", "Letícia", "Amanda", "Bruna", "Carolina", "Natália", "Jéssica", 
+    "Aline", "Cecília", "Maitê", "Yasmin", "Bianca", "Rafaela", "Vanessa", "Tatiane", 
+    "Priscila", "Renata", "Clarice", "Taís", "Débora", "Flávia", "Patrícia", "Sabrina", 
+    "Clara", "Elisa", "Rebeca", "Daniela", "Milena", "Carla", "Luciana", "Monique", 
+    "Adriana", "Jaqueline", "Viviane", "Alessandra", "Juliana", "Talita"
 ]
 
 SOBRENOMES = [
     "Silva", "Santos", "Oliveira", "Souza", "Pereira", "Lima", "Carvalho", 
-    "Ferreira", "Ribeiro", "Rodrigues", "Almeida", "Nascimento", "Alves", "Araujo", "Ramos",
-    "Gomes", "Martins", "Rocha", "Barbosa", "Cardoso", "Melo", "Teixeira", "Monteiro"
+    "Ferreira", "Ribeiro", "Rodrigues", "Almeida", "Nascimento", "Alves", "Araújo", "Ramos",
+    "Gomes", "Martins", "Rocha", "Barbosa", "Cardoso", "Melo", "Teixeira", "Monteiro",
+    "da Silva", "dos Santos", "de Oliveira", "de Souza", "Ferreira Lima", "Barbosa da Costa",
+    "Cardoso de Oliveira", "Alves de Souza", "Vieira", "Machado", "Moraes", "Cavalcanti",
+    "Batista", "Pinto", "Correia", "Castro", "Freitas", "Dias", "Moreira", "Nunes", 
+    "Marques", "Fernandes", "Barros", "Costa e Silva", "Tavares", "Mendes", 
+    "Guimarães", "Borges", "Farias", "Dantas", "Assis", "Peixoto", "Siqueira"
 ]
 
 ESPECIALIDADES_BRASIL = [
@@ -87,7 +102,7 @@ DIAGNOSTICOS_POR_ESPECIALIDADE = {
         ("DPOC reagudizada moderada", "Tabagista crônico com aumento de tosse produtiva e dispneia mMRC 2. Otimizada terapia inalatória dupla (LABA/LAMA)."),
         ("Pneumonia adquirida na comunidade", "Infiltrado broncoalveolar em base pulmonar direita com febre e tosse. Iniciada antibioticoterapia com amoxicilina/clavulanato.")
     ],
-    "Ginecologia e Obstetricia": [
+    "Ginecologia e Obstetrícia": [
         ("Exame ginecológico de rotina (Papanicolau)", "Exame especular e colposcopia sem alterações citológicas. Exame clínico das mamas preservado."),
         ("Pré-natal de primeiro trimestre (10 semanas)", "Gravidez confirmada por ultrassom com embrião viável e batimentos cardíacos presentes. Prescrito ácido fólico e sulfato ferroso."),
         ("Síndrome dos ovários policísticos (SOP)", "Oligomenorreia associada a manifestações clínicas de hiperandrogenismo. Indicada terapia com anticoncepcional oral.")
@@ -194,9 +209,32 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Erro ao verificar/criar a base de dados '{target_db}': {e}"))
             raise
 
-    def asegurar_tabelas(self):
-        """Cria as tabelas em SQL Server se ainda não existirem."""
+    def asegurar_tabelas(self, drop_first=False):
+        """Cria as tabelas em SQL Server se ainda não existirem, ou as recria se drop_first=True."""
         with connection.cursor() as cursor:
+            cursor.execute("""
+            SELECT COUNT(*) FROM sys.tables WHERE name = 'PACIENTES';
+            """)
+            has_pacientes = cursor.fetchone()[0] > 0
+            if has_pacientes and not drop_first:
+                cursor.execute("""
+                SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('PACIENTES') AND name = 'CPF';
+                """)
+                if cursor.fetchone()[0] == 0:
+                    self.stdout.write(self.style.WARNING("-> Detectado schema anterior incompatível em PACIENTES. Recriando tabelas..."))
+                    drop_first = True
+
+            if drop_first:
+                self.stdout.write(self.style.WARNING("-> Excluindo tabelas anteriores para recriação limpa..."))
+                cursor.execute("""
+                IF OBJECT_ID('dbo.PACIENTES', 'U') IS NOT NULL DROP TABLE dbo.PACIENTES;
+                IF OBJECT_ID('dbo.MEDICOS', 'U') IS NOT NULL DROP TABLE dbo.MEDICOS;
+                IF OBJECT_ID('dbo.ESPECIALIDADES', 'U') IS NOT NULL DROP TABLE dbo.ESPECIALIDADES;
+                IF OBJECT_ID('dbo.PATIENTS', 'U') IS NOT NULL DROP TABLE dbo.PATIENTS;
+                IF OBJECT_ID('dbo.DOCTORS', 'U') IS NOT NULL DROP TABLE dbo.DOCTORS;
+                IF OBJECT_ID('dbo.SPECIALTIES', 'U') IS NOT NULL DROP TABLE dbo.SPECIALTIES;
+                """)
+
             cursor.execute("""
             IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ESPECIALIDADES')
             CREATE TABLE ESPECIALIDADES (
@@ -260,18 +298,35 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.asegurar_base_dados()
-        self.asegurar_tabelas()
+
+        if options['clean']:
+            self.stdout.write(self.style.WARNING("Limpando e recriando tabelas brasileiras do zero (Reset IDs em 1)..."))
+            self.asegurar_tabelas(drop_first=True)
+        else:
+            self.asegurar_tabelas(drop_first=False)
 
         with transaction.atomic():
-            if options['clean']:
-                self.stdout.write(self.style.WARNING("Limpando registros anteriores e resetando IDs em 0..."))
-                with connection.cursor() as cursor:
-                    cursor.execute("DELETE FROM PACIENTES;")
-                    cursor.execute("DELETE FROM MEDICOS;")
-                    cursor.execute("DELETE FROM ESPECIALIDADES;")
-                    cursor.execute("DBCC CHECKIDENT ('PACIENTES', RESEED, 0);")
-                    cursor.execute("DBCC CHECKIDENT ('MEDICOS', RESEED, 0);")
-                    cursor.execute("DBCC CHECKIDENT ('ESPECIALIDADES', RESEED, 0);")
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                IF (SELECT COUNT(*) FROM PACIENTES) > 0 DELETE FROM PACIENTES;
+                IF (SELECT COUNT(*) FROM MEDICOS) > 0 DELETE FROM MEDICOS;
+                IF (SELECT COUNT(*) FROM ESPECIALIDADES) > 0 DELETE FROM ESPECIALIDADES;
+
+                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('PACIENTES')) IS NULL
+                    DBCC CHECKIDENT ('PACIENTES', RESEED, 1);
+                ELSE
+                    DBCC CHECKIDENT ('PACIENTES', RESEED, 0);
+
+                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('MEDICOS')) IS NULL
+                    DBCC CHECKIDENT ('MEDICOS', RESEED, 1);
+                ELSE
+                    DBCC CHECKIDENT ('MEDICOS', RESEED, 0);
+
+                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('ESPECIALIDADES')) IS NULL
+                    DBCC CHECKIDENT ('ESPECIALIDADES', RESEED, 1);
+                ELSE
+                    DBCC CHECKIDENT ('ESPECIALIDADES', RESEED, 0);
+                """)
 
             from core.models_br import Especialidade, Medico, Paciente
 
@@ -291,17 +346,23 @@ class Command(BaseCommand):
             # 2. Médicos
             self.stdout.write(f"-> Gerando {cant_medicos} médicos brasileiros com CRM e CPF...")
             medicos_creados = []
+            used_med_names = set()
             for i in range(cant_medicos):
                 genero = 'M' if random.random() > 0.5 else 'F'
-                nome = random.choice(NOMBRES_MASCULINOS if genero == 'M' else NOMBRES_FEMENINOS)
-                sobrenome = random.choice(SOBRENOMES)
+                for _ in range(50):
+                    nome = random.choice(NOMBRES_MASCULINOS if genero == 'M' else NOMBRES_FEMENINOS)
+                    sobrenome = random.choice(SOBRENOMES)
+                    if (nome, sobrenome) not in used_med_names:
+                        used_med_names.add((nome, sobrenome))
+                        break
+
                 cpf = calcular_cpf_valido()
                 estado_crm = random.choice(['SP', 'RJ', 'MG', 'PR', 'RS'])
                 rg = gerar_rg_brasileiro(estado_crm)
                 crm = str(random.randint(110000, 499999))
                 esp = especialidades_objs[i % len(especialidades_objs)]
                 telefone = f"+55 {random.choice([11, 21, 31, 41])} 9{random.randint(7000, 9999)}-{random.randint(1000, 9999)}"
-                email = f"{nome.lower()}.{sobrenome.lower()}@hospitalmetropolitano.com.br"
+                email = f"{nome.lower().replace(' ', '')}.{sobrenome.lower().replace(' ', '')}@hospitalmetropolitano.com.br"
 
                 medico = Medico.objects.create(
                     crm=crm,
@@ -319,11 +380,17 @@ class Command(BaseCommand):
             # 3. Pacientes
             self.stdout.write(f"-> Gerando {cant_pacientes} pacientes brasileiros com prontuários e LGPD...")
             hoy = date.today()
+            used_pat_names = set(used_med_names)
 
             for j in range(cant_pacientes):
                 genero = 'M' if random.random() > 0.5 else 'F'
-                nome = random.choice(NOMBRES_MASCULINOS if genero == 'M' else NOMBRES_FEMENINOS)
-                sobrenome = random.choice(SOBRENOMES)
+                for _ in range(50):
+                    nome = random.choice(NOMBRES_MASCULINOS if genero == 'M' else NOMBRES_FEMENINOS)
+                    sobrenome = random.choice(SOBRENOMES)
+                    if (nome, sobrenome) not in used_pat_names:
+                        used_pat_names.add((nome, sobrenome))
+                        break
+
                 cpf = calcular_cpf_valido()
                 logradouro, bairro, cidade, estado, cep = random.choice(LOGRADOUROS_BRASIL)
                 rg = gerar_rg_brasileiro(estado)
@@ -358,7 +425,7 @@ class Command(BaseCommand):
                     diag_titulo, diag_historia = ("Consulta de rotina", "Avaliação clínica preventiva periódica.")
 
                 telefone = f"+55 {random.choice([11, 21, 31, 41])} 9{random.randint(7000, 9999)}-{random.randint(1000, 9999)}"
-                email = f"{nome.lower()}.{sobrenome.lower()}{random.randint(10, 99)}@gmail.com"
+                email = f"{nome.lower().replace(' ', '')}.{sobrenome.lower().replace(' ', '')}{random.randint(10, 99)}@gmail.com"
 
                 Paciente.objects.create(
                     cpf=cpf,

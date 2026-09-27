@@ -155,6 +155,38 @@ class Doctor(models.Model):
         self.phone_number = val
 
     @property
+    def telefone_celular(self):
+        return self.phone_number
+
+    @telefone_celular.setter
+    def telefone_celular(self, val):
+        self.phone_number = val
+
+    @property
+    def phone(self):
+        return self.phone_number
+
+    @phone.setter
+    def phone(self, val):
+        self.phone_number = val
+
+    @property
+    def nome(self):
+        return self.first_name
+
+    @nome.setter
+    def nome(self, val):
+        self.first_name = val
+
+    @property
+    def sobrenome(self):
+        return self.last_name
+
+    @sobrenome.setter
+    def sobrenome(self, val):
+        self.last_name = val
+
+    @property
     def especialidad(self):
         return self.specialty
 
@@ -318,6 +350,38 @@ class Patient(models.Model):
     @telefono_celular.setter
     def telefono_celular(self, val):
         self.phone_number = val
+
+    @property
+    def telefone_celular(self):
+        return self.phone_number
+
+    @telefone_celular.setter
+    def telefone_celular(self, val):
+        self.phone_number = val
+
+    @property
+    def phone(self):
+        return self.phone_number
+
+    @phone.setter
+    def phone(self, val):
+        self.phone_number = val
+
+    @property
+    def nome(self):
+        return self.first_name
+
+    @nome.setter
+    def nome(self, val):
+        self.first_name = val
+
+    @property
+    def sobrenome(self):
+        return self.last_name
+
+    @sobrenome.setter
+    def sobrenome(self, val):
+        self.last_name = val
 
     @property
     def direccion(self):

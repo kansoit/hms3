@@ -122,6 +122,54 @@ class Medico(models.Model):
         self.sobrenome = val
 
     @property
+    def nombre(self):
+        return self.nome
+
+    @nombre.setter
+    def nombre(self, val):
+        self.nome = val
+
+    @property
+    def first_name(self):
+        return self.nome
+
+    @first_name.setter
+    def first_name(self, val):
+        self.nome = val
+
+    @property
+    def last_name(self):
+        return self.sobrenome
+
+    @last_name.setter
+    def last_name(self, val):
+        self.sobrenome = val
+
+    @property
+    def telefono_celular(self):
+        return self.telefone_celular
+
+    @telefono_celular.setter
+    def telefono_celular(self, val):
+        self.telefone_celular = val
+
+    @property
+    def phone(self):
+        return self.telefone_celular
+
+    @phone.setter
+    def phone(self, val):
+        self.telefone_celular = val
+
+    @property
+    def phone_number(self):
+        return self.telefone_celular
+
+    @phone_number.setter
+    def phone_number(self, val):
+        self.telefone_celular = val
+
+    @property
     def cuil(self):
         return self.cpf
 
@@ -283,6 +331,54 @@ class Paciente(models.Model):
     @apellido.setter
     def apellido(self, val):
         self.sobrenome = val
+
+    @property
+    def nombre(self):
+        return self.nome
+
+    @nombre.setter
+    def nombre(self, val):
+        self.nome = val
+
+    @property
+    def first_name(self):
+        return self.nome
+
+    @first_name.setter
+    def first_name(self, val):
+        self.nome = val
+
+    @property
+    def last_name(self):
+        return self.sobrenome
+
+    @last_name.setter
+    def last_name(self, val):
+        self.sobrenome = val
+
+    @property
+    def telefono_celular(self):
+        return self.telefone_celular
+
+    @telefono_celular.setter
+    def telefono_celular(self, val):
+        self.telefone_celular = val
+
+    @property
+    def phone(self):
+        return self.telefone_celular
+
+    @phone.setter
+    def phone(self, val):
+        self.telefone_celular = val
+
+    @property
+    def phone_number(self):
+        return self.telefone_celular
+
+    @phone_number.setter
+    def phone_number(self, val):
+        self.telefone_celular = val
 
     @property
     def fecha_nacimiento(self):

@@ -259,26 +259,39 @@ def patient_detail(request, pk):
     doctor_obj = paciente.medico_asignado
     doctor_str = str(doctor_obj) if doctor_obj else ("No physician assigned" if country == 'US' else ("Sem médico atribuído" if country == 'BR' else "Sin asignar"))
 
+    dob_str = ''
+    dob_iso = ''
+    if paciente.fecha_nacimiento:
+        if hasattr(paciente.fecha_nacimiento, 'strftime'):
+            dob_str = paciente.fecha_nacimiento.strftime('%d/%m/%Y')
+            dob_iso = paciente.fecha_nacimiento.strftime('%Y-%m-%d')
+        else:
+            dob_str = str(paciente.fecha_nacimiento)
+            dob_iso = str(paciente.fecha_nacimiento)
+
+    phone_val = getattr(paciente, 'telefono_celular', getattr(paciente, 'telefone_celular', getattr(paciente, 'phone_number', ''))) or ''
+    postal_val = getattr(paciente, 'codigo_postal', getattr(paciente, 'zip_code', getattr(paciente, 'cep', ''))) or ''
+
     data = {
         'id': paciente.id,
         'patient_id': paciente.id,
-        'first_name': paciente.nombre,
-        'last_name': paciente.apellido,
-        'full_name': f"{paciente.apellido}, {paciente.nombre}",
-        'doc_primary': paciente.dni,
-        'doc_secondary': paciente.cuil,
-        'date_of_birth': paciente.fecha_nacimiento.strftime('%d/%m/%Y') if paciente.fecha_nacimiento else '',
-        'date_of_birth_iso': paciente.fecha_nacimiento.strftime('%Y-%m-%d') if paciente.fecha_nacimiento else '',
-        'phone': paciente.telefono_celular,
-        'email': paciente.email,
-        'address': paciente.direccion,
-        'city': paciente.localidad,
-        'state': paciente.provincia,
-        'postal_code': getattr(paciente, 'codigo_postal', getattr(paciente, 'zip_code', getattr(paciente, 'cep', ''))),
-        'insurance_provider': paciente.obra_social,
-        'insurance_number': paciente.numero_afiliado,
-        'diagnosis': paciente.diagnostico_clinico,
-        'clinical_notes': paciente.historia_clinica,
+        'first_name': getattr(paciente, 'nombre', getattr(paciente, 'nome', getattr(paciente, 'first_name', ''))) or '',
+        'last_name': getattr(paciente, 'apellido', getattr(paciente, 'sobrenome', getattr(paciente, 'last_name', ''))) or '',
+        'full_name': f"{getattr(paciente, 'apellido', '')}, {getattr(paciente, 'nombre', '')}",
+        'doc_primary': getattr(paciente, 'dni', getattr(paciente, 'rg', getattr(paciente, 'state_id', ''))) or '',
+        'doc_secondary': getattr(paciente, 'cuil', getattr(paciente, 'cpf', getattr(paciente, 'ssn', ''))) or '',
+        'date_of_birth': dob_str,
+        'date_of_birth_iso': dob_iso,
+        'phone': phone_val,
+        'email': paciente.email or '',
+        'address': paciente.direccion or '',
+        'city': paciente.localidad or '',
+        'state': paciente.provincia or '',
+        'postal_code': postal_val,
+        'insurance_provider': paciente.obra_social or '',
+        'insurance_number': paciente.numero_afiliado or '',
+        'diagnosis': paciente.diagnostico_clinico or '',
+        'clinical_notes': paciente.historia_clinica or '',
         'doctor_id': paciente.medico_asignado_id if doctor_obj else None,
         'doctor_name': doctor_str,
         'doctor': doctor_str,

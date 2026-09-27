@@ -102,6 +102,62 @@ class Medico(models.Model):
     def nombre_completo(self):
         return f"{self.apellido}, {self.nombre}"
 
+    @property
+    def first_name(self):
+        return self.nombre
+
+    @first_name.setter
+    def first_name(self, val):
+        self.nombre = val
+
+    @property
+    def last_name(self):
+        return self.apellido
+
+    @last_name.setter
+    def last_name(self, val):
+        self.apellido = val
+
+    @property
+    def nome(self):
+        return self.nombre
+
+    @nome.setter
+    def nome(self, val):
+        self.nombre = val
+
+    @property
+    def sobrenome(self):
+        return self.apellido
+
+    @sobrenome.setter
+    def sobrenome(self, val):
+        self.apellido = val
+
+    @property
+    def telefone_celular(self):
+        return self.telefono_celular
+
+    @telefone_celular.setter
+    def telefone_celular(self, val):
+        self.telefono_celular = val
+
+    @property
+    def phone_number(self):
+        return self.telefono_celular
+
+    @phone_number.setter
+    def phone_number(self, val):
+        self.telefono_celular = val
+
+    @property
+    def phone(self):
+        return self.telefono_celular
+
+    @phone.setter
+    def phone(self, val):
+        self.telefono_celular = val
+
 
 class Paciente(models.Model):
     """
@@ -228,3 +284,59 @@ class Paciente(models.Model):
     @postal_code.setter
     def postal_code(self, val):
         self.codigo_postal = val
+
+    @property
+    def first_name(self):
+        return self.nombre
+
+    @first_name.setter
+    def first_name(self, val):
+        self.nombre = val
+
+    @property
+    def last_name(self):
+        return self.apellido
+
+    @last_name.setter
+    def last_name(self, val):
+        self.apellido = val
+
+    @property
+    def nome(self):
+        return self.nombre
+
+    @nome.setter
+    def nome(self, val):
+        self.nombre = val
+
+    @property
+    def sobrenome(self):
+        return self.apellido
+
+    @sobrenome.setter
+    def sobrenome(self, val):
+        self.apellido = val
+
+    @property
+    def telefone_celular(self):
+        return self.telefono_celular
+
+    @telefone_celular.setter
+    def telefone_celular(self, val):
+        self.telefono_celular = val
+
+    @property
+    def phone_number(self):
+        return self.telefono_celular
+
+    @phone_number.setter
+    def phone_number(self, val):
+        self.telefono_celular = val
+
+    @property
+    def phone(self):
+        return self.telefono_celular
+
+    @phone.setter
+    def phone(self, val):
+        self.telefono_celular = val

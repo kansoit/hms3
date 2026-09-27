@@ -7,19 +7,33 @@ from django.db import connection, transaction
 from core.models import Especialidad, Medico, Paciente
 
 NOMBRES_MASCULINOS = [
-    "Juan Carlos", "Santiago", "Mateo", "Lucas", "Joaquin", "Agustin", "Facundo", 
-    "Nicolas", "Martin", "Tomas", "Gonzalo", "Ignacio", "Matias", "Diego", "Esteban"
+    "Mateo", "Bautista", "Juan", "Felipe", "Bruno", "Santiago", "Joaquín", "Lucas", 
+    "Benjamín", "Tomás", "Nicolás", "Martín", "Ignacio", "Agustín", "Francisco", 
+    "Lautaro", "Facundo", "Julián", "Emiliano", "Manuel", "Federico", "Gonzalo", 
+    "Ramiro", "Maximiliano", "Esteban", "Mariano", "Diego", "Hernán", "Sebastián", 
+    "Gabriel", "Alejandro", "Fernando", "Matías", "Ezequiel", "Rodrigo", "Leandro", 
+    "Marcos", "Pablo", "Luciano", "Guillermo", "Damián", "Patricio", "Federico", 
+    "Gastón", "Cristian", "Leonardo", "Javier", "Germán", "Gustavo", "Andrés"
 ]
 
 NOMBRES_FEMENINOS = [
-    "Maria Elena", "Lucia", "Valentina", "Martina", "Sofia", "Camila", "Julieta", 
-    "Florencia", "Mariana", "Victoria", "Paula", "Carla", "Daniela", "Milagros", "Carolina"
+    "Sofía", "Emma", "Valentina", "Isabella", "Martina", "Lucía", "Camila", "María", 
+    "Catalina", "Julieta", "Delfina", "Mía", "Paula", "Victoria", "Florencia", 
+    "Carolina", "Agustina", "Luciana", "Milagros", "Micaela", "Rocío", "Sol", 
+    "Candela", "Belén", "Mariana", "Daniela", "Valeria", "Cecilia", "Natalia", 
+    "Romina", "Carla", "Constanza", "Pilar", "Guadalupe", "Macarena", "Malena", 
+    "Sabrina", "Clara", "Morena", "Josefina", "Abril", "Brenda", "Flavia", 
+    "Mariela", "Gisela", "Melisa", "Patricia", "Andrea", "Lorena", "Soledad"
 ]
 
 APELLIDOS = [
-    "Gonzalez", "Rodriguez", "Gomez", "Fernandez", "Lopez", "Diaz", "Martinez", 
-    "Perez", "Garcia", "Sanchez", "Romero", "Sosa", "Alvarez", "Torres", "Ruiz", 
-    "Ramirez", "Flores", "Benitez", "Acosta", "Medina", "Herrera", "Aguirre", "Gimenez"
+    "González", "Rodríguez", "Gómez", "Fernández", "López", "Díaz", "Martínez", 
+    "Pérez", "García", "Sánchez", "Romero", "Sosa", "Álvarez", "Torres", "Ruiz", 
+    "Ramírez", "Flores", "Benítez", "Acosta", "Medina", "Herrera", "Aguirre", 
+    "Giménez", "Gutiérrez", "Pereyra", "Castro", "Molina", "Ortiz", "Silva", 
+    "Núñez", "Luna", "Juárez", "Cabrera", "Ríos", "Morales", "Godoy", "Moreno", 
+    "Ferreyra", "Domínguez", "Carrizo", "Vega", "Castillo", "Ojeda", "Rojas", 
+    "Méndez", "Peralta", "Quiroga", "Vázquez", "Rossi", "Ferrari", "Bianchi"
 ]
 
 ESPECIALIDADES_ARGENTINA = [
@@ -195,9 +209,32 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Error al verificar/crear la base de datos '{target_db}': {e}"))
             raise
 
-    def asegurar_tablas(self):
-        """Crea las tablas argentinas en SQL Server si aún no existen."""
+    def asegurar_tablas(self, drop_first=False):
+        """Crea las tablas argentinas en SQL Server si aún no existen, o las recria si drop_first=True."""
         with connection.cursor() as cursor:
+            cursor.execute("""
+            SELECT COUNT(*) FROM sys.tables WHERE name = 'PACIENTES';
+            """)
+            has_pacientes = cursor.fetchone()[0] > 0
+            if has_pacientes and not drop_first:
+                cursor.execute("""
+                SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('PACIENTES') AND name = 'DNI';
+                """)
+                if cursor.fetchone()[0] == 0:
+                    self.stdout.write(self.style.WARNING("-> Detectado schema anterior incompatible en PACIENTES. Recreando tablas..."))
+                    drop_first = True
+
+            if drop_first:
+                self.stdout.write(self.style.WARNING("-> Eliminando tablas anteriores para recreación limpia..."))
+                cursor.execute("""
+                IF OBJECT_ID('dbo.PACIENTES', 'U') IS NOT NULL DROP TABLE dbo.PACIENTES;
+                IF OBJECT_ID('dbo.MEDICOS', 'U') IS NOT NULL DROP TABLE dbo.MEDICOS;
+                IF OBJECT_ID('dbo.ESPECIALIDADES', 'U') IS NOT NULL DROP TABLE dbo.ESPECIALIDADES;
+                IF OBJECT_ID('dbo.PATIENTS', 'U') IS NOT NULL DROP TABLE dbo.PATIENTS;
+                IF OBJECT_ID('dbo.DOCTORS', 'U') IS NOT NULL DROP TABLE dbo.DOCTORS;
+                IF OBJECT_ID('dbo.SPECIALTIES', 'U') IS NOT NULL DROP TABLE dbo.SPECIALTIES;
+                """)
+
             cursor.execute("""
             IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ESPECIALIDADES')
             CREATE TABLE ESPECIALIDADES (
@@ -265,18 +302,35 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.asegurar_base_datos()
-        self.asegurar_tablas()
+
+        if options['clean']:
+            self.stdout.write(self.style.WARNING("Eliminando y recreando tablas argentinas desde cero (Reset IDs en 1)..."))
+            self.asegurar_tablas(drop_first=True)
+        else:
+            self.asegurar_tablas(drop_first=False)
 
         with transaction.atomic():
-            if options['clean']:
-                self.stdout.write(self.style.WARNING("Eliminando registros previos y reseteando IDs a 0..."))
-                with connection.cursor() as cursor:
-                    cursor.execute("DELETE FROM PACIENTES;")
-                    cursor.execute("DELETE FROM MEDICOS;")
-                    cursor.execute("DELETE FROM ESPECIALIDADES;")
-                    cursor.execute("DBCC CHECKIDENT ('PACIENTES', RESEED, 0);")
-                    cursor.execute("DBCC CHECKIDENT ('MEDICOS', RESEED, 0);")
-                    cursor.execute("DBCC CHECKIDENT ('ESPECIALIDADES', RESEED, 0);")
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                IF (SELECT COUNT(*) FROM PACIENTES) > 0 DELETE FROM PACIENTES;
+                IF (SELECT COUNT(*) FROM MEDICOS) > 0 DELETE FROM MEDICOS;
+                IF (SELECT COUNT(*) FROM ESPECIALIDADES) > 0 DELETE FROM ESPECIALIDADES;
+
+                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('PACIENTES')) IS NULL
+                    DBCC CHECKIDENT ('PACIENTES', RESEED, 1);
+                ELSE
+                    DBCC CHECKIDENT ('PACIENTES', RESEED, 0);
+
+                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('MEDICOS')) IS NULL
+                    DBCC CHECKIDENT ('MEDICOS', RESEED, 1);
+                ELSE
+                    DBCC CHECKIDENT ('MEDICOS', RESEED, 0);
+
+                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('ESPECIALIDADES')) IS NULL
+                    DBCC CHECKIDENT ('ESPECIALIDADES', RESEED, 1);
+                ELSE
+                    DBCC CHECKIDENT ('ESPECIALIDADES', RESEED, 0);
+                """)
 
             from core.models_ar import Especialidad, Medico, Paciente
 
@@ -296,11 +350,17 @@ class Command(BaseCommand):
             self.stdout.write(f"-> Generando {cant_medicos} médicos argentinos...")
             medicos_creados = []
             dni_base_medicos = random.randint(22000000, 32000000)
+            used_med_names = set()
 
             for i in range(cant_medicos):
                 genero = 'M' if random.random() > 0.5 else 'F'
-                nombre = random.choice(NOMBRES_MASCULINOS if genero == 'M' else NOMBRES_FEMENINOS)
-                apellido = random.choice(APELLIDOS)
+                for _ in range(50):
+                    nombre = random.choice(NOMBRES_MASCULINOS if genero == 'M' else NOMBRES_FEMENINOS)
+                    apellido = random.choice(APELLIDOS)
+                    if (nombre, apellido) not in used_med_names:
+                        used_med_names.add((nombre, apellido))
+                        break
+
                 dni = str(dni_base_medicos + i * 137)
                 cuil = calcular_cuil(dni, genero)
                 mn = str(random.randint(90000, 160000))
@@ -325,11 +385,17 @@ class Command(BaseCommand):
             self.stdout.write(f"-> Generando {cant_pacientes} pacientes argentinos...")
             dni_base_pacientes = random.randint(33000000, 44000000)
             hoy = date.today()
+            used_pat_names = set(used_med_names)
 
             for j in range(cant_pacientes):
                 genero = 'M' if random.random() > 0.5 else 'F'
-                nombre = random.choice(NOMBRES_MASCULINOS if genero == 'M' else NOMBRES_FEMENINOS)
-                apellido = random.choice(APELLIDOS)
+                for _ in range(50):
+                    nombre = random.choice(NOMBRES_MASCULINOS if genero == 'M' else NOMBRES_FEMENINOS)
+                    apellido = random.choice(APELLIDOS)
+                    if (nombre, apellido) not in used_pat_names:
+                        used_pat_names.add((nombre, apellido))
+                        break
+
                 dni = str(dni_base_pacientes + j * 97)
                 cuil = calcular_cuil(dni, genero)
 
