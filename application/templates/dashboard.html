@@ -437,6 +437,7 @@
         insurance: "{{ txt.field_insurance|escapejs }}",
         notes: "{{ txt.field_notes|escapejs }}",
         diagnosis: "{{ txt.field_diagnosis|escapejs }}",
+        doctor: "{{ txt.field_doctor|escapejs }}",
     };
 
     let deleteTargetId = null;
@@ -494,13 +495,16 @@
                             <div>${email}</div>
                         </div>
 
-                        <div class="col-md-8">
+                        <div class="col-md-5">
                             <label class="form-label text-muted small fw-bold mb-0">${TXT.address}</label>
                             <div>${address}</div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-7">
                             <label class="form-label text-muted small fw-bold mb-0">${TXT.insurance}</label>
-                            <div><span class="badge bg-light text-dark border">${insurance}</span> <span class="font-monospace small">#${insuranceNum}</span></div>
+                            <div class="d-flex align-items-center flex-wrap gap-1">
+                                <span class="badge bg-light text-dark border fs-6 fw-normal">${insurance}</span>
+                                <span class="font-monospace text-nowrap fw-semibold ms-1">#${insuranceNum}</span>
+                            </div>
                         </div>
 
                         <div class="col-12 mt-3">
@@ -508,7 +512,7 @@
                                 <label class="form-label text-danger small fw-bold mb-1"><i class="fa-solid fa-lock me-1"></i> ${TXT.notes} & ${TXT.diagnosis}</label>
                                 <h6 class="fw-bold text-dark mt-1">${diagnosis}</h6>
                                 <p class="mb-0 text-muted small">${notes}</p>
-                                <div class="mt-2 text-muted small"><strong>Médico:</strong> ${doctor}</div>
+                                <div class="mt-2 text-muted small"><strong>${TXT.doctor || 'Médico'}:</strong> ${doctor}</div>
                             </div>
                         </div>
                     </div>

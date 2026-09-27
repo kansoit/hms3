@@ -16,6 +16,7 @@ ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_raw.split(',') if h.strip()] o
 
 # Identificador de entorno: 'prod' o 'test'
 HMS_ENV = os.getenv('HMS_ENV', 'prod').lower()
+HMS_COUNTRY = os.getenv('HMS_COUNTRY', 'AR').upper()
 
 # --- AISLAMIENTO DE SESIONES Y COOKIES ---
 # Esto previene que al abrir Producción (8012) y Test (8013) en el mismo navegador,
@@ -73,7 +74,9 @@ WSGI_APPLICATION = 'hms_project.wsgi.application'
 
 # --- CONFIGURACIÓN DE BASE DE DATOS (SQL SERVER / MSSQL) ---
 DB_HOST = os.getenv('DB_HOST')
-DB_NAME = os.getenv('DB_NAME', 'hms3')
+_default_db_prefix = "hms3" if HMS_ENV == 'prod' else "vhms3"
+_default_db = f"{_default_db_prefix}_{HMS_COUNTRY.lower()}"
+DB_NAME = os.getenv('DB_NAME', _default_db)
 DB_USER = os.getenv('DB_USER', 'sa')
 DB_PASSWORD = os.getenv('DB_PASSWORD', '')
 DB_PORT = os.getenv('DB_PORT', '1433')

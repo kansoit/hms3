@@ -47,7 +47,7 @@ def demo_context_processor(request):
         'HMS_ENV': env_name,
         'HMS_COUNTRY': country,
         'IS_MASKED': is_masked,
-        'DB_NAME': getattr(settings, 'DB_NAME', 'hms3'),
+        'DB_NAME': getattr(settings, 'DB_NAME', f"{('hms3' if env_name == 'prod' else 'vhms3')}_{country.lower()}"),
         'DB_HOST': getattr(settings, 'DB_HOST', 'localhost'),
         'DB_PORT': getattr(settings, 'DB_PORT', '1433'),
         'HOST_PORT': os.getenv('HOST_PORT', '8012' if env_name == 'prod' else '8013'),

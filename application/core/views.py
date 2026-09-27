@@ -14,11 +14,12 @@ def dashboard(request):
     """
     txt = get_country_text()
     hms_env = os.getenv('HMS_ENV', 'prod').lower()
-    db_name = settings.DATABASES['default'].get('NAME', 'hms3')
+    country = os.getenv('HMS_COUNTRY', 'AR').upper()
+    prefix = 'hms3' if hms_env == 'prod' else 'vhms3'
+    db_name = settings.DATABASES['default'].get('NAME', f"{prefix}_{country.lower()}")
     query_paciente = request.GET.get('q_paciente', '').strip()
     query_medico = request.GET.get('q_medico', '').strip()
 
-    country = os.getenv('HMS_COUNTRY', 'AR').upper()
     if country == 'BR':
         pacientes_qs = Paciente.objects.select_related('medico_responsavel', 'medico_responsavel__especialidade').all()
         if query_paciente:
@@ -126,7 +127,8 @@ def api_health(request):
     """
     hms_env = os.getenv('HMS_ENV', 'prod').lower()
     country = os.getenv('HMS_COUNTRY', 'AR').upper()
-    db_name = settings.DATABASES['default'].get('NAME', 'hms3')
+    prefix = 'hms3' if hms_env == 'prod' else 'vhms3'
+    db_name = settings.DATABASES['default'].get('NAME', f"{prefix}_{country.lower()}")
     is_masked = (hms_env == 'test')
     return JsonResponse({
         'status': 'UP',
@@ -272,12 +274,16 @@ def patient_detail(request, pk):
     phone_val = getattr(paciente, 'telefono_celular', getattr(paciente, 'telefone_celular', getattr(paciente, 'phone_number', ''))) or ''
     postal_val = getattr(paciente, 'codigo_postal', getattr(paciente, 'zip_code', getattr(paciente, 'cep', ''))) or ''
 
+    first_name_val = getattr(paciente, 'nombre', getattr(paciente, 'nome', getattr(paciente, 'first_name', ''))) or ''
+    last_name_val = getattr(paciente, 'apellido', getattr(paciente, 'sobrenome', getattr(paciente, 'last_name', ''))) or ''
+    full_name_val = f"{last_name_val}, {first_name_val}" if last_name_val and first_name_val else (last_name_val or first_name_val)
+
     data = {
         'id': paciente.id,
         'patient_id': paciente.id,
-        'first_name': getattr(paciente, 'nombre', getattr(paciente, 'nome', getattr(paciente, 'first_name', ''))) or '',
-        'last_name': getattr(paciente, 'apellido', getattr(paciente, 'sobrenome', getattr(paciente, 'last_name', ''))) or '',
-        'full_name': f"{getattr(paciente, 'apellido', '')}, {getattr(paciente, 'nombre', '')}",
+        'first_name': first_name_val,
+        'last_name': last_name_val,
+        'full_name': full_name_val,
         'doc_primary': getattr(paciente, 'dni', getattr(paciente, 'rg', getattr(paciente, 'state_id', ''))) or '',
         'doc_secondary': getattr(paciente, 'cuil', getattr(paciente, 'cpf', getattr(paciente, 'ssn', ''))) or '',
         'date_of_birth': dob_str,
