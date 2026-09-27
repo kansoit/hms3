@@ -31,6 +31,7 @@ def dashboard(request):
                 Q(convenio__icontains=query_paciente) |
                 Q(diagnostico__icontains=query_paciente)
             )
+        pacientes_qs = pacientes_qs.order_by('sobrenome', 'nome')
 
         medicos_qs = Medico.objects.select_related('especialidade').all()
         if query_medico:
@@ -55,6 +56,7 @@ def dashboard(request):
                 Q(insurance_provider__icontains=query_paciente) |
                 Q(diagnosis__icontains=query_paciente)
             )
+        pacientes_qs = pacientes_qs.order_by('last_name', 'first_name')
 
         medicos_qs = Medico.objects.select_related('specialty').all()
         if query_medico:
@@ -79,6 +81,7 @@ def dashboard(request):
                 Q(obra_social__icontains=query_paciente) |
                 Q(diagnostico_clinico__icontains=query_paciente)
             )
+        pacientes_qs = pacientes_qs.order_by('apellido', 'nombre')
 
         medicos_qs = Medico.objects.select_related('especialidad').all()
         if query_medico:

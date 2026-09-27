@@ -127,7 +127,6 @@
                     <table class="table table-hover table-striped table-bordered table-custom align-middle mb-0" id="tabla-pacientes">
                         <thead>
                             <tr>
-                                <th class="text-center" style="width: 50px;">{{ txt.col_id }}</th>
                                 <th style="width: 135px;">{{ txt.col_doc1 }}</th>
                                 <th style="width: 145px;">{{ txt.col_doc2 }}</th>
                                 <th>{{ txt.col_name }}</th>
@@ -142,7 +141,6 @@
                         <tbody>
                             {% for p in pacientes %}
                             <tr id="fila-paciente-{{ p.id }}">
-                                <td class="text-muted fw-bold text-center">{{ p.id }}</td>
                                 <td class="font-monospace fw-bold text-dark text-nowrap">{{ p.dni }}</td>
                                 <td class="font-monospace text-primary fw-semibold text-nowrap">{{ p.cuil }}</td>
                                 <td class="fw-semibold text-nowrap">{{ p.apellido }}, {{ p.nombre }}</td>
@@ -175,7 +173,7 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="10" class="text-center py-4 text-muted">
+                                <td colspan="9" class="text-center py-4 text-muted">
                                     <i class="fa-solid fa-folder-open fs-2 mb-2 d-block"></i>
                                     {{ txt.empty_patients }}
                                 </td>
@@ -206,7 +204,6 @@
                     <table class="table table-hover table-striped table-bordered table-custom align-middle mb-0" id="tabla-medicos">
                         <thead>
                             <tr>
-                                <th class="text-center" style="width: 50px;">{{ txt.col_id }}</th>
                                 <th style="width: 180px;">{{ txt.col_med_license }}</th>
                                 <th style="width: 135px;">{{ txt.col_doc1 }}</th>
                                 <th style="width: 145px;">{{ txt.col_doc2 }}</th>
@@ -219,7 +216,6 @@
                         <tbody>
                             {% for m in medicos %}
                             <tr>
-                                <td class="text-muted fw-bold text-center">{{ m.id }}</td>
                                 <td class="text-nowrap">
                                     {% if HMS_COUNTRY == 'US' %}
                                         <span class="badge bg-primary">NPI: {{ m.matricula_nacional }}</span>
@@ -246,7 +242,7 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="8" class="text-center py-4 text-muted">
+                                <td colspan="7" class="text-center py-4 text-muted">
                                     <i class="fa-solid fa-user-doctor fs-2 mb-2 d-block"></i>
                                     {{ txt.empty_doctors }}
                                 </td>
@@ -398,7 +394,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
-                <p class="fs-6 mb-3">{{ txt.confirm_delete_desc }}<strong id="eliminar-paciente-nombre" class="text-danger"></strong> (ID: <span id="eliminar-paciente-id" class="font-monospace"></span>)?</p>
+                <p class="fs-6 mb-3">{{ txt.confirm_delete_desc }}<strong id="eliminar-paciente-nombre" class="text-danger"></strong>?</p>
                 <div class="alert alert-warning small mb-0">
                     <i class="fa-solid fa-circle-info me-1"></i>
                     <strong>{{ txt.uat_failure_hint }}:</strong> {{ txt.uat_failure_desc|safe }}
@@ -444,7 +440,7 @@
     let deleteTargetId = null;
 
     function verFichaPaciente(id) {
-        document.getElementById('view-paciente-title').innerText = `${TXT.viewPatient} #${id}`;
+        document.getElementById('view-paciente-title').innerText = TXT.viewPatient;
         const modal = new bootstrap.Modal(document.getElementById('modalPaciente'));
         const body = document.getElementById('modal-paciente-body');
         body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted">...</p></div>';
@@ -542,7 +538,7 @@
         const form = document.getElementById('formPaciente');
         form.reset();
         document.getElementById('form-error-alert').classList.add('d-none');
-        document.getElementById('form-paciente-title').innerText = `${TXT.editPatient} #${id}`;
+        document.getElementById('form-paciente-title').innerText = TXT.editPatient;
         document.getElementById('paciente_id').value = id;
 
         const modal = new bootstrap.Modal(document.getElementById('modalPacienteForm'));
@@ -610,7 +606,6 @@
 
     function confirmarEliminarPaciente(id, nombreCompleto) {
         deleteTargetId = id;
-        document.getElementById('eliminar-paciente-id').innerText = id;
         document.getElementById('eliminar-paciente-nombre').innerText = nombreCompleto;
         const modal = new bootstrap.Modal(document.getElementById('modalConfirmarEliminar'));
         modal.show();

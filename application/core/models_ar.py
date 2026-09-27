@@ -260,7 +260,7 @@ class Paciente(models.Model):
         db_table = 'PACIENTES'
         verbose_name = 'Paciente'
         verbose_name_plural = 'Pacientes'
-        ordering = ['id']
+        ordering = ['apellido', 'nombre']
 
     def __str__(self):
         return f"{self.apellido}, {self.nombre} (DNI: {self.dni})"
