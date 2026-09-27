@@ -246,7 +246,7 @@ HMS 3.0 includes dedicated Django management commands to populate databases with
 * **Test Dataset**: Derived from that source via Delphix Continuous Data virtualization and transformed by Delphix Continuous Compliance masking algorithms.
 
 ### 1. Seeding Argentina (`seed_argentina`)
-* **Identifiers**: Generates realistic Argentine DNIs and checksum-valid Modulo 11 CUILs (`20-XXXXXXXX-X`, `27-XXXXXXXX-X`, `23-XXXXXXXX-X`).
+* **Identifiers**: Generates realistic synthetic Argentine DNIs and Modulo 11 checksum-compatible CUILs (`20-XXXXXXXX-X`, `27-XXXXXXXX-X`, `23-XXXXXXXX-X`).
 * **Medical Licensing**: Generates realistic synthetic Matrícula Nacional (MN) and Provincial (MP) values.
 * **Command Syntax**:
   ```bash
@@ -255,7 +255,7 @@ HMS 3.0 includes dedicated Django management commands to populate databases with
   ```
 
 ### 2. Seeding Brazil (`seed_brazil`)
-* **Identifiers**: Generates checksum-valid synthetic CPFs verified via Modulo 11 (`XXX.XXX.XXX-XX`), and realistic RGs.
+* **Identifiers**: Generates synthetic CPFs calculated with Modulo 11 check digits (`XXX.XXX.XXX-XX`), and realistic synthetic RGs.
 * **Medical Licensing**: Generates realistic Conselho Regional de Medicina (CRM) values with State jurisdiction codes (`CRM/SP`, `CRM/RJ`).
 * **Command Syntax**:
   ```bash
@@ -263,8 +263,8 @@ HMS 3.0 includes dedicated Django management commands to populate databases with
   ```
 
 ### 3. Seeding USA (`seed_usa`)
-* **Identifiers**: Generates synthetic SSN-format identifiers excluding known invalid ranges (such as area `000`, `666`, group `00`, or serial `0000`), plus State IDs.
-* **Medical Licensing**: Generates checksum-valid synthetic 10-digit NPI-format values using the **Luhn Modulo 10 check digit** algorithm (standard 10-digit NPIs starting with `1` or `2`).
+* **Identifiers**: Generates synthetic SSN-format identifiers with standard structural exclusions (omitting area `000`, `666`, group `00`, or serial `0000`), plus synthetic State IDs.
+* **Medical Licensing**: Generates synthetic 10-digit NPI-format values using the **Luhn Modulo 10 check digit** algorithm (10-digit values starting with `1` or `2`).
 * **Command Syntax**:
   ```bash
   podman exec hms3_prod python manage.py seed_usa --clean

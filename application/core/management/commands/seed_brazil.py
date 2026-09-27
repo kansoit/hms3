@@ -135,7 +135,7 @@ LOGRADOUROS_BRASIL = [
 
 
 class Command(BaseCommand):
-    help = 'Povoa a base de dados brasileira com CPFs válidos (Módulo 11), RGs, CRMs e Prontuários para LGPD.'
+    help = 'Povoa a base de dados brasileira com CPFs sintéticos (Módulo 11), RGs, CRMs e Prontuários para LGPD.'
 
     def add_arguments(self, parser):
         parser.add_argument('--pacientes', type=int, default=40, help='Quantidade de pacientes')
@@ -421,5 +421,5 @@ class Command(BaseCommand):
                 )
 
         self.stdout.write(self.style.SUCCESS(
-            f"¡Sucesso! Criadas {len(especialidades_objs)} especialidades, {cant_medicos} médicos com CRM e {cant_pacientes} pacientes com CPFs válidos (Módulo 11)."
+            f"¡Sucesso! Criadas {len(especialidades_objs)} especialidades, {cant_medicos} médicos com CRM e {cant_pacientes} pacientes com CPFs sintéticos (Módulo 11)."
         ))

@@ -418,5 +418,5 @@ class Command(BaseCommand):
                 )
 
         self.stdout.write(self.style.SUCCESS(
-            f"Success! Created {len(specialties_objs)} specialties, {cant_medicos} physicians with valid NPIs, and {cant_pacientes} patients with SSA-compliant SSNs."
+            f"Success! Created {len(specialties_objs)} specialties, {cant_medicos} physicians with synthetic NPIs, and {cant_pacientes} patients with formatted SSNs."
         ))

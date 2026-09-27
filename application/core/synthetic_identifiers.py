@@ -3,8 +3,8 @@ Common synthetic identifier generators and collision-avoidance logic for HMS 3.0
 
 Provides shared, mathematically consistent algorithms for:
 - Argentina: DNI (8 digits) and CUIL (Modulo 11 with prefixes 20/27/23).
-- Brazil: RG (Registro Geral) and CPF (Receita Federal Modulo 11).
-- USA: State ID and SSN (SSA-compliant area/group/serial).
+- Brazil: RG (Registro Geral) and CPF (Modulo 11 check digits).
+- USA: State ID and SSN (structural area/group/serial exclusions).
 
 These generators are used consistently across seed commands and manual patient creation.
 """
@@ -22,7 +22,7 @@ def generate_ar_dni() -> str:
 
 def generate_ar_cuil(dni: Optional[str] = None, genero: Optional[str] = None) -> str:
     """
-    Calculates a mathematically valid Argentine CUIL (Modulo 11) compliant with Delphix ar-mask.
+    Calculates an Argentine CUIL (Modulo 11 check digit) compliant with Delphix ar-mask rules.
     """
     if not dni:
         dni = generate_ar_dni()
@@ -66,8 +66,8 @@ def generate_br_rg(estado: Optional[str] = None) -> str:
 
 def generate_br_cpf() -> str:
     """
-    Generates a 100% valid Brazilian CPF with both check digits calculated via Modulo 11
-    per official Receita Federal standards for LGPD compliance.
+    Generates a synthetic Brazilian CPF with both check digits calculated via Modulo 11
+    for LGPD demonstration rule sets.
     """
     nove_digitos = [random.randint(0, 9) for _ in range(9)]
 
@@ -97,7 +97,7 @@ def generate_us_state_id(state: Optional[str] = None) -> str:
 
 def generate_us_ssn() -> str:
     """
-    Generates a realistic SSN compliant with official Social Security Administration rules:
+    Generates a synthetic SSN adhering to standard structural exclusion rules:
     - Area (AAA): not 000, not 666, not 900-999
     - Group (GG): not 00
     - Serial (SSSS): not 0000
@@ -111,8 +111,8 @@ def generate_us_ssn() -> str:
 
 def generate_us_npi() -> str:
     """
-    Generates a 10-digit National Provider Identifier (NPI) with a valid
-    Luhn algorithm (Modulo 10) check digit, prefixed by 80840 per CMS standards.
+    Generates a synthetic 10-digit National Provider Identifier (NPI) format with
+    Luhn algorithm (Modulo 10) check digit, prefixed by 80840.
     """
     base_9 = "1" + "".join(str(random.randint(0, 9)) for _ in range(8))
     full_prefix = "80840" + base_9

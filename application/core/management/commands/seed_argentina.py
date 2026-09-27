@@ -432,5 +432,5 @@ class Command(BaseCommand):
                 )
 
             self.stdout.write(self.style.SUCCESS(
-                f"¡Éxito! Se crearon {len(especialidades_objs)} especialidades en catálogo, {cant_medicos} médicos y {cant_pacientes} pacientes con DNIs y CUILs válidos."
+                f"¡Éxito! Se crearon {len(especialidades_objs)} especialidades en catálogo, {cant_medicos} médicos y {cant_pacientes} pacientes con DNIs y CUILs sintéticos (Módulo 11)."
             ))
