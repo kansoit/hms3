@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
 from core.synthetic_identifiers import generate_br_cpf as calcular_cpf_valido, generate_br_rg as gerar_rg_brasileiro
+generar_rg_brasileiro = gerar_rg_brasileiro
 
 NOMBRES_MASCULINOS = [
     "Arthur", "Bernardo", "Davi", "Gabriel", "Heitor", "Lucas", "Matheus", "Pedro", 
@@ -367,7 +368,7 @@ class Command(BaseCommand):
 
                 cpf = calcular_cpf_valido()
                 logradouro, cidade, estado, cep = random.choice(LOGRADOUROS_BRASIL)
-                rg = generar_rg_brasileiro(estado)
+                rg = gerar_rg_brasileiro(estado)
                 numero_casa = random.randint(10, 3500)
                 comp = f", Apto {random.randint(11, 142)}" if random.random() > 0.4 else ""
                 endereco = f"{logradouro}, {numero_casa}{comp}"
