@@ -18,7 +18,6 @@ It showcases end-to-end data lifecycle capabilities:
 2. **Deterministic & Referential Data Masking**: Replaces Personally Identifiable Information (PII) and Protected Health Information (PHI) with synthetically valid, referentially intact masked equivalents.
 3. **Instant Virtual Database (VDB) Provisioning**: Delivers near-instant, zero-storage-footprint virtual copies of SQL Server databases for development and test (UAT/QA).
 4. **Self-Service VDB Lifecycle (Rewind / Refresh)**: Allows instant rollback of accidental data deletion or corruption in seconds directly via Delphix Data Control Tower (DCT).
-5. **Zero-DBA Day-0 Automated Provisioning**: Built-in bootstrap engines eliminate the need for DBA scripts or manual database/schema pre-creation on target SQL Server instances.
 
 ---
 
@@ -232,41 +231,6 @@ HMS 3.0 includes dedicated Django management commands to populate production dat
   sudo podman exec hms3_prod python manage.py seed_usa --clean
   ```
 
-### ⚡ Zero-DBA "Day 0" Automated Setup & Provisioning
-
-HMS 3.0 provides complete **Zero-DBA Day-0 bootstrapping**. When deploying to a fresh SQL Server instance where neither databases nor tables exist, running the seeding command automatically provisions the entire environment without requiring DBA intervention:
-
-```
-[ Day 0: ./launch_hms.sh prod ar ]
-         │
-         ▼
-[ Seed: python manage.py seed_argentina --clean ]
-         │
-         ├─▶ 1. Master Connection & Database Provisioning
-         │      └─▶ Connects to SQL Server 'master' with autocommit=True
-         │      └─▶ IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'hms3_ar')
-         │             CREATE DATABASE [hms3_ar];
-         │
-         ├─▶ 2. Target Database DDL Schema Creation
-         │      └─▶ Connects to [hms3_ar]
-         │      └─▶ Executes DDL to create tables (ESPECIALIDADES, MEDICOS, PACIENTES),
-         │          primary keys, foreign keys, and unique constraints
-         │
-         ├─▶ 3. Sequence Reseed (--clean)
-         │      └─▶ DBCC CHECKIDENT on all tables resets identity seed to 0
-         │      └─▶ Guarantees first newly inserted record receives ID 1
-         │
-         └─▶ 4. Transactional Data Ingestion
-                └─▶ Populates clinical catalog, physicians, and patients atomically
-```
-
-#### Day-0 Execution Flow:
-1. **Container Startup**: Running `./launch_hms.sh prod <country>` starts Gunicorn on port 8012 (or 8013 for test). Gunicorn initializes workers without holding persistent database locks.
-2. **Automated Database Creation**: When `seed_<country> --clean` is triggered, the seeder queries SQL Server's `master.sys.databases`. If the target database (`hms3_ar`, `hms3_br`, or `hms3_us`) does not exist, it issues `CREATE DATABASE [<DB_NAME>]` on the fly.
-3. **Automated Schema & Constraint Creation**: The seeder switches connection to the target database and verifies all tables (`CREATE TABLE`), unique constraints, and foreign key references.
-4. **Reseed & Clean**: When `--clean` is passed, existing records are wiped within an atomic transaction and identities reseeded to 0 via `DBCC CHECKIDENT`, guaranteeing that the newly populated patient and doctor records start sequentially at **ID 1**.
-5. **Synthetic PHI Data Population**: Inserts mathematically verified national identifiers, medical licenses, and clinically aligned medical records.
-
 ### Seeding Command Options
 All three seeding commands accept the following options:
 * `--clean`: Resets the database state: truncates existing tables, executes `DBCC CHECKIDENT ('<TABLE>', RESEED, 0)` in SQL Server, and ensures new records begin sequentially at **ID 1**.
@@ -285,15 +249,14 @@ All seeders enforce strict clinical logic:
 
 This step-by-step walkthrough demonstrates how to deliver an impactful Delphix Continuous Compliance & Data Virtualization presentation following the official Delphix presales methodology:
 
-### Step 1: Deploy Production & Generate Fresh Data (Day 0)
+### Step 1: Deploy Production & Generate Fresh Data
 ```bash
 # 1. Deploy Production (Port 8012) - Example: Argentina
 ./launch_hms.sh prod ar
 
-# 2. Populate fresh, clean records starting at ID 1 (Auto-provisions DB & tables if missing)
+# 2. Populate fresh, clean records starting at ID 1
 sudo podman exec hms3_prod python manage.py seed_argentina --clean
 ```
-*Note*: The seeder handles complete Day 0 bootstrapping—creating `hms3_ar` and all schema tables automatically if they do not exist.
 *Show the audience the Production UI at `http://<HOST-IP>:8012/`.* Point out the unmasked DNIs, CUILs, patient names, addresses, and confidential medical histories under the crimson red Production banner.
 
 ### Step 2: Ingest Production (dSource) & Virtualize (VDB Provisioning)
