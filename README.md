@@ -104,10 +104,12 @@ A critical challenge during live demonstrations is comparing **Production (Port 
 
 4. **Visual Environment Banners**:
    * **Production (Port 8012)**: Crimson red banner with warning icons and legal notice:
-     `PRODUCTION ENVIRONMENT: REAL SENSITIVE DATA (HIPAA / PHI) | DB: hms3_us | Port: 8012`
-   * **Test VDB (Port 8013)**: Forest green banner indicating Delphix continuous compliance:
-     `TEST VDB ENVIRONMENT: MASKED BY DELPHIX | DB: vhms3_us | Port: 8013`
-   * **Live Microsecond Clock**: Millisecond-precision server clock in the navbar confirms data was dynamically queried from SQL Server without stale rendering.
+     `PRODUCTION ENVIRONMENT: REAL SENSITIVE DATA | DB: hms3_us | Port: 8012 | HIPAA Protected Health Information (PHI)`
+     *(Localized per country, e.g. `ENTORNO PRODUCCIÓN: DATOS REALES SENSIBLES` for Argentina)*
+   * **Test VDB (Port 8013)**: Forest green banner with shield icon indicating compliant masked data:
+     `NON-PRODUCTION ENVIRONMENT: MASKED DATA | DB: vhms3_us | Port: 8013 | HIPAA Protected Health Information (PHI)`
+     *(Localized per country, e.g. `ENTORNO NO PRODUCCIÓN: DATOS ENMASCARADOS` for Argentina)*
+   * **Live Millisecond Clock**: Millisecond-precision server clock in the navbar confirms data was dynamically queried from SQL Server without stale rendering.
 
 ---
 
@@ -155,7 +157,7 @@ HMS_CONTAINER_NAME=hms3_prod  # 'hms3_prod' or 'hms3_test'
 HOST_PORT=8012                # Port mapped on the host
 
 # SQL Server Instance Connection
-DB_HOST=10.0.0.10             # SQL Server IP or Hostname
+DB_HOST=<SQL_SERVER_HOST>     # SQL Server IP or Hostname
 DB_PORT=1433                  # Default SQL Server Port
 DB_NAME=hms3_us               # Target Database
 DB_USER=sa                    # SQL Server User
@@ -295,7 +297,7 @@ sudo podman exec hms3_prod python manage.py seed_argentina --clean
    ```
 2. Open both environments in adjacent browser tabs:
    * **Left Tab (Prod)**: `http://<HOST-IP>:8012/` (Red Banner - Real Production Data)
-   * **Right Tab (Test VDB)**: `http://<HOST-IP>:8013/` (Green Banner - Masked by Delphix)
+   * **Right Tab (Test VDB)**: `http://<HOST-IP>:8013/` (Green Banner - Masked Non-Production Data)
 3. **Key Points to Highlight to the Customer**:
    * Record counts and primary keys (IDs 1 to 40) are identical between Prod and Test VDB.
    * Names, identification numbers, contact information, and diagnoses are realistically and consistently masked.
