@@ -1,124 +1,96 @@
-import logging
-import os
 import json
-from django.shortcuts import render, get_object_or_404
-from django.http import JsonResponse
-from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import csrf_exempt
-from django.db.models import Q
+import logging
+from datetime import date
+
 from django.conf import settings
-from .models import Paciente, Medico, Especialidad
+from django.db import connection
+from django.db.models import Q
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, render
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+
+from .country import PROFILE
 from .i18n import get_country_text
+from .models import Especialidad, Medico, Paciente
 from .synthetic_identifiers import generate_unique_patient_identifiers
 
 logger = logging.getLogger(__name__)
+
+
+# --- Consultas base (una sola rama para los tres países, ver core/country.py) ---
+
+def _pacientes_qs(q=''):
+    doctor = PROFILE['patient_doctor']
+    qs = Paciente.objects.select_related(doctor, f"{doctor}__{PROFILE['doctor_specialty']}")
+    if q:
+        cond = Q()
+        for campo in PROFILE['patient_search']:
+            cond |= Q(**{f'{campo}__icontains': q})
+        qs = qs.filter(cond)
+    return qs.order_by(*PROFILE['patient_order'])
+
+
+def _medicos_qs(q=''):
+    especialidad = PROFILE['doctor_specialty']
+    qs = Medico.objects.select_related(especialidad)
+    if q:
+        cond = Q(**{f"{especialidad}__{PROFILE['specialty_name']}__icontains": q})
+        for campo in PROFILE['doctor_search']:
+            cond |= Q(**{f'{campo}__icontains': q})
+        qs = qs.filter(cond)
+    return qs.order_by(*PROFILE['doctor_order'])
+
+
+def referencias_rotas():
+    """
+    Cuenta relaciones que apuntan a filas inexistentes. Las tablas no tienen
+    FOREIGN KEY (para permitir el TRUNCATE del masking on-the-fly), así que la
+    base no lo impide: puede pasar si un job de masking deja fuera una tabla o
+    modifica una columna de relación.
+    """
+    doctor = PROFILE['patient_doctor']
+    especialidad = PROFILE['doctor_specialty']
+    medicos = Medico.objects.exclude(
+        **{f'{especialidad}_id__in': Especialidad.objects.values('pk')}
+    ).count()
+    pacientes = Paciente.objects.filter(
+        **{f'{doctor}_id__isnull': False}
+    ).exclude(
+        **{f'{doctor}_id__in': Medico.objects.values('pk')}
+    ).count()
+    return {'doctors_without_specialty': medicos, 'patients_with_missing_doctor': pacientes}
+
+
+def _parse_id(valor):
+    """Devuelve el entero de un ID recibido como texto, o None si no es válido."""
+    valor = str(valor or '').strip()
+    return int(valor) if valor.isdigit() else None
+
 
 def dashboard(request):
     """
     Vista principal única para demostración de Delphix Continuous Compliance.
     Muestra Pacientes y Médicos con soporte de filtrado y sin almacenamiento en caché.
     """
-    txt = get_country_text()
-    hms_env = os.getenv('HMS_ENV', 'prod').lower()
-    country = os.getenv('HMS_COUNTRY', 'AR').upper()
-    prefix = 'hms3' if hms_env == 'prod' else 'vhms3'
-    db_name = str(settings.DATABASES['default'].get('NAME', f"{prefix}_{country.lower()}"))
     query_paciente = request.GET.get('q_paciente', '').strip()
     query_medico = request.GET.get('q_medico', '').strip()
 
-    if country == 'BR':
-        pacientes_qs = Paciente.objects.select_related('medico_responsavel', 'medico_responsavel__especialidade').all()
-        if query_paciente:
-            pacientes_qs = pacientes_qs.filter(
-                Q(cpf__icontains=query_paciente) |
-                Q(rg__icontains=query_paciente) |
-                Q(sobrenome__icontains=query_paciente) |
-                Q(nome__icontains=query_paciente) |
-                Q(convenio__icontains=query_paciente) |
-                Q(diagnostico__icontains=query_paciente)
-            )
-        pacientes_qs = pacientes_qs.order_by('sobrenome', 'nome')
-
-        medicos_qs = Medico.objects.select_related('especialidade').all()
-        if query_medico:
-            medicos_qs = medicos_qs.filter(
-                Q(crm__icontains=query_medico) |
-                Q(sobrenome__icontains=query_medico) |
-                Q(nome__icontains=query_medico) |
-                Q(especialidade__nome__icontains=query_medico) |
-                Q(cpf__icontains=query_medico)
-            )
-        obras_sociales_count = Paciente.objects.values('convenio').distinct().count()
-        todos_medicos = Medico.objects.select_related('especialidade').all().order_by('sobrenome', 'nome')
-
-    elif country == 'US':
-        pacientes_qs = Paciente.objects.select_related('assigned_doctor', 'assigned_doctor__specialty').all()
-        if query_paciente:
-            pacientes_qs = pacientes_qs.filter(
-                Q(ssn__icontains=query_paciente) |
-                Q(state_id__icontains=query_paciente) |
-                Q(last_name__icontains=query_paciente) |
-                Q(first_name__icontains=query_paciente) |
-                Q(insurance_provider__icontains=query_paciente) |
-                Q(diagnosis__icontains=query_paciente)
-            )
-        pacientes_qs = pacientes_qs.order_by('last_name', 'first_name')
-
-        medicos_qs = Medico.objects.select_related('specialty').all()
-        if query_medico:
-            medicos_qs = medicos_qs.filter(
-                Q(npi__icontains=query_medico) |
-                Q(last_name__icontains=query_medico) |
-                Q(first_name__icontains=query_medico) |
-                Q(specialty__name__icontains=query_medico) |
-                Q(ssn__icontains=query_medico)
-            )
-        obras_sociales_count = Paciente.objects.values('insurance_provider').distinct().count()
-        todos_medicos = Medico.objects.select_related('specialty').all().order_by('last_name', 'first_name')
-
-    else:
-        pacientes_qs = Paciente.objects.select_related('medico_asignado', 'medico_asignado__especialidad').all()
-        if query_paciente:
-            pacientes_qs = pacientes_qs.filter(
-                Q(dni__icontains=query_paciente) |
-                Q(cuil__icontains=query_paciente) |
-                Q(apellido__icontains=query_paciente) |
-                Q(nombre__icontains=query_paciente) |
-                Q(obra_social__icontains=query_paciente) |
-                Q(diagnostico_clinico__icontains=query_paciente)
-            )
-        pacientes_qs = pacientes_qs.order_by('apellido', 'nombre')
-
-        medicos_qs = Medico.objects.select_related('especialidad').all()
-        if query_medico:
-            medicos_qs = medicos_qs.filter(
-                Q(matricula_nacional__icontains=query_medico) |
-                Q(apellido__icontains=query_medico) |
-                Q(nombre__icontains=query_medico) |
-                Q(especialidad__nombre__icontains=query_medico) |
-                Q(dni__icontains=query_medico)
-            )
-        obras_sociales_count = Paciente.objects.values('obra_social').distinct().count()
-        todos_medicos = Medico.objects.select_related('especialidad').all().order_by('apellido', 'nombre')
-
-    total_pacientes = Paciente.objects.count()
-    total_medicos = Medico.objects.count()
-    total_especialidades = Especialidad.objects.count()
     tab = request.GET.get('tab', '').strip().lower()
     if not tab:
         tab = 'medicos' if query_medico else 'pacientes'
 
     context = {
-        'txt': txt,
-        'hms_env': hms_env,
-        'db_name': db_name,
-        'pacientes': pacientes_qs,
-        'medicos': medicos_qs,
-        'todos_medicos': todos_medicos,
-        'total_pacientes': total_pacientes,
-        'total_medicos': total_medicos,
-        'total_especialidades': total_especialidades,
-        'obras_sociales_count': obras_sociales_count,
+        'txt': get_country_text(),
+        'hms_env': settings.HMS_ENV,
+        'db_name': settings.DB_NAME,
+        'pacientes': _pacientes_qs(query_paciente),
+        'medicos': _medicos_qs(query_medico),
+        'todos_medicos': _medicos_qs(),
+        'total_pacientes': Paciente.objects.count(),
+        'total_medicos': Medico.objects.count(),
+        'total_especialidades': Especialidad.objects.count(),
+        'obras_sociales_count': Paciente.objects.values(PROFILE['patient_insurance']).distinct().count(),
         'q_paciente': query_paciente,
         'q_medico': query_medico,
         'active_tab': tab,
@@ -126,26 +98,35 @@ def dashboard(request):
     return render(request, 'dashboard.html', context)
 
 
-import json
-from django.views.decorators.csrf import csrf_exempt
-
-
 def api_health(request):
     """
-    Health check API endpoint returning operational status, environment and database.
+    Health check real: consulta la base de datos. Responde 200 con status UP si
+    la base contesta y tiene las tablas, o 503 con status DOWN si no.
+    Informa además las referencias rotas entre tablas (integrity OK / BROKEN).
+    Lo usa hms-ctl.py para confirmar que el entorno quedó operativo.
     """
-    hms_env = os.getenv('HMS_ENV', 'prod').lower()
-    country = os.getenv('HMS_COUNTRY', 'AR').upper()
-    prefix = 'hms3' if hms_env == 'prod' else 'vhms3'
-    db_name = str(settings.DATABASES['default'].get('NAME', f"{prefix}_{country.lower()}"))
-    is_masked = (hms_env == 'test')
-    return JsonResponse({
+    data = {
         'status': 'UP',
-        'environment': hms_env,
-        'country': country,
-        'database': db_name,
-        'masked': is_masked,
-    })
+        'environment': settings.HMS_ENV,
+        'country': settings.HMS_COUNTRY,
+        'database': settings.DB_NAME,
+        'masked': settings.HMS_ENV == 'test',
+        'build': settings.HMS_BUILD,
+    }
+    try:
+        data['patients'] = Paciente.objects.count()
+        data['doctors'] = Medico.objects.count()
+        data['specialties'] = Especialidad.objects.count()
+        rotas = referencias_rotas()
+        data['integrity'] = 'BROKEN' if any(rotas.values()) else 'OK'
+        data.update(rotas)
+    except Exception as exc:
+        logger.error("Health check: base de datos no disponible: %s", exc)
+        connection.close()
+        data['status'] = 'DOWN'
+        data['error'] = 'Database not available or not seeded.'
+        return JsonResponse(data, status=503)
+    return JsonResponse(data)
 
 
 def patient_list(request):
@@ -153,35 +134,8 @@ def patient_list(request):
     REST API endpoint returning JSON list of all patients.
     Supports query parameter '?q=' for filtering.
     """
-    q = request.GET.get('q', '').strip()
-    country = os.getenv('HMS_COUNTRY', 'AR').upper()
-    if country == 'BR':
-        qs = Paciente.objects.select_related('medico_responsavel', 'medico_responsavel__especialidade').all()
-        if q:
-            qs = qs.filter(
-                Q(cpf__icontains=q) | Q(rg__icontains=q) |
-                Q(sobrenome__icontains=q) | Q(nome__icontains=q) |
-                Q(convenio__icontains=q) | Q(diagnostico__icontains=q)
-            )
-    elif country == 'US':
-        qs = Paciente.objects.select_related('assigned_doctor', 'assigned_doctor__specialty').all()
-        if q:
-            qs = qs.filter(
-                Q(ssn__icontains=q) | Q(state_id__icontains=q) |
-                Q(last_name__icontains=q) | Q(first_name__icontains=q) |
-                Q(insurance_provider__icontains=q) | Q(diagnosis__icontains=q)
-            )
-    else:
-        qs = Paciente.objects.select_related('medico_asignado', 'medico_asignado__especialidad').all()
-        if q:
-            qs = qs.filter(
-                Q(dni__icontains=q) | Q(cuil__icontains=q) |
-                Q(apellido__icontains=q) | Q(nombre__icontains=q) |
-                Q(obra_social__icontains=q) | Q(diagnostico_clinico__icontains=q)
-            )
-
     items = []
-    for p in qs:
+    for p in _pacientes_qs(request.GET.get('q', '').strip()):
         items.append({
             'id': p.id,
             'patient_id': p.id,
@@ -194,7 +148,7 @@ def patient_list(request):
             'address': p.direccion,
             'city': p.localidad,
             'state': p.provincia,
-            'postal_code': getattr(p, 'codigo_postal', getattr(p, 'zip_code', getattr(p, 'cep', ''))),
+            'postal_code': p.codigo_postal,
             'insurance': p.obra_social,
             'diagnosis': p.diagnostico_clinico,
             'doctor': str(p.medico_asignado) if p.medico_asignado else None,
@@ -206,43 +160,19 @@ def doctor_list(request):
     """
     REST API endpoint returning JSON list of all doctors.
     """
-    country = os.getenv('HMS_COUNTRY', 'AR').upper()
-    if country == 'BR':
-        qs = Medico.objects.select_related('especialidade').all()
-        items = [{
-            'id': m.id,
-            'first_name': m.nome,
-            'last_name': m.sobrenome,
-            'license': m.crm,
-            'cpf': m.cpf,
-            'specialty': m.especialidade.nome if m.especialidade else None,
-            'phone': m.telefone_celular,
-            'email': m.email
-        } for m in qs]
-    elif country == 'US':
-        qs = Medico.objects.select_related('specialty').all()
-        items = [{
-            'id': m.id,
-            'first_name': m.first_name,
-            'last_name': m.last_name,
-            'license': m.npi,
-            'ssn': m.ssn,
-            'specialty': m.specialty.name if m.specialty else None,
-            'phone': m.phone_number,
-            'email': m.email
-        } for m in qs]
-    else:
-        qs = Medico.objects.select_related('especialidad').all()
-        items = [{
+    doc_key, doc_field = PROFILE['doctor_doc']
+    items = []
+    for m in _medicos_qs():
+        items.append({
             'id': m.id,
             'first_name': m.nombre,
             'last_name': m.apellido,
-            'license': m.matricula_nacional,
-            'dni': m.dni,
-            'specialty': m.especialidad.nombre if m.especialidad else None,
+            'license': getattr(m, PROFILE['doctor_license']),
+            doc_key: getattr(m, doc_field),
+            'specialty': getattr(m.especialidad, PROFILE['specialty_name']) if m.especialidad else None,
             'phone': m.telefono_celular,
-            'email': m.email
-        } for m in qs]
+            'email': m.email,
+        })
     return JsonResponse({'status': 'ok', 'count': len(items), 'doctors': items})
 
 
@@ -250,59 +180,38 @@ def patient_detail(request, pk):
     """
     Returns sensitive PHI and clinical records for a specific patient.
     """
-    country = os.getenv('HMS_COUNTRY', 'AR').upper()
-    if country == 'BR':
-        paciente = get_object_or_404(
-            Paciente.objects.select_related('medico_responsavel', 'medico_responsavel__especialidade'), 
-            pk=pk
-        )
-    elif country == 'US':
-        paciente = get_object_or_404(
-            Paciente.objects.select_related('assigned_doctor', 'assigned_doctor__specialty'), 
-            pk=pk
-        )
-    else:
-        paciente = get_object_or_404(
-            Paciente.objects.select_related('medico_asignado', 'medico_asignado__especialidad'), 
-            pk=pk
-        )
+    paciente = get_object_or_404(_pacientes_qs(), pk=pk)
 
     doctor_obj = paciente.medico_asignado
-    doctor_str = str(doctor_obj) if doctor_obj else ("No physician assigned" if country == 'US' else ("Sem médico atribuído" if country == 'BR' else "Sin asignar"))
+    doctor_str = str(doctor_obj) if doctor_obj else get_country_text()['no_doctor']
 
-    dob_str = ''
-    dob_iso = ''
-    if paciente.fecha_nacimiento:
-        if hasattr(paciente.fecha_nacimiento, 'strftime'):
-            dob_str = paciente.fecha_nacimiento.strftime('%d/%m/%Y')
-            dob_iso = paciente.fecha_nacimiento.strftime('%Y-%m-%d')
-        else:
-            dob_str = str(paciente.fecha_nacimiento)
-            dob_iso = str(paciente.fecha_nacimiento)
+    dob = paciente.fecha_nacimiento
+    if dob and hasattr(dob, 'strftime'):
+        dob_str = dob.strftime('%d/%m/%Y')
+        dob_iso = dob.strftime('%Y-%m-%d')
+    else:
+        dob_str = dob_iso = str(dob or '')
 
-    phone_val = getattr(paciente, 'telefono_celular', getattr(paciente, 'telefone_celular', getattr(paciente, 'phone_number', ''))) or ''
-    postal_val = getattr(paciente, 'codigo_postal', getattr(paciente, 'zip_code', getattr(paciente, 'cep', ''))) or ''
+    last_name = paciente.apellido or ''
+    first_name = paciente.nombre or ''
+    full_name = f"{last_name}, {first_name}" if last_name and first_name else (last_name or first_name)
 
-    first_name_val = getattr(paciente, 'nombre', getattr(paciente, 'nome', getattr(paciente, 'first_name', ''))) or ''
-    last_name_val = getattr(paciente, 'apellido', getattr(paciente, 'sobrenome', getattr(paciente, 'last_name', ''))) or ''
-    full_name_val = f"{last_name_val}, {first_name_val}" if last_name_val and first_name_val else (last_name_val or first_name_val)
-
-    data = {
+    return JsonResponse({
         'id': paciente.id,
         'patient_id': paciente.id,
-        'first_name': first_name_val,
-        'last_name': last_name_val,
-        'full_name': full_name_val,
-        'doc_primary': getattr(paciente, 'dni', getattr(paciente, 'rg', getattr(paciente, 'state_id', ''))) or '',
-        'doc_secondary': getattr(paciente, 'cuil', getattr(paciente, 'cpf', getattr(paciente, 'ssn', ''))) or '',
+        'first_name': first_name,
+        'last_name': last_name,
+        'full_name': full_name,
+        'doc_primary': paciente.dni or '',
+        'doc_secondary': paciente.cuil or '',
         'date_of_birth': dob_str,
         'date_of_birth_iso': dob_iso,
-        'phone': phone_val,
+        'phone': paciente.telefono_celular or '',
         'email': paciente.email or '',
         'address': paciente.direccion or '',
         'city': paciente.localidad or '',
         'state': paciente.provincia or '',
-        'postal_code': postal_val,
+        'postal_code': paciente.codigo_postal or '',
         'insurance_provider': paciente.obra_social or '',
         'insurance_number': paciente.numero_afiliado or '',
         'diagnosis': paciente.diagnostico_clinico or '',
@@ -310,8 +219,11 @@ def patient_detail(request, pk):
         'doctor_id': paciente.medico_asignado_id if doctor_obj else None,
         'doctor_name': doctor_str,
         'doctor': doctor_str,
-    }
-    return JsonResponse(data)
+    })
+
+
+def _error(message, status=400):
+    return JsonResponse({'status': 'error', 'message': message}, status=status)
 
 
 @csrf_exempt
@@ -320,80 +232,74 @@ def patient_save(request):
     """
     Creates or updates a patient record via JSON or form payload.
     """
+    txt = get_country_text()
+
     payload = {}
     if request.content_type == 'application/json':
         try:
             payload = json.loads(request.body.decode('utf-8'))
         except Exception:
             payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
 
     def get_val(*keys, default=''):
         for k in keys:
-            if k in payload and payload[k] is not None:
+            if payload.get(k) is not None:
                 return str(payload[k]).strip()
             val = request.POST.get(k)
             if val is not None:
                 return str(val).strip()
         return default
 
-    patient_id = get_val('patient_id', 'id')
+    patient_id_raw = get_val('patient_id', 'id')
     doc_primary = get_val('doc_primary', 'ssn', 'state_id')
     doc_secondary = get_val('doc_secondary')
     last_name = get_val('last_name')
     first_name = get_val('first_name')
-    dob = get_val('dob', 'date_of_birth')
-    phone = get_val('phone', 'phone_number')
-    email = get_val('email')
-    address = get_val('address')
-    city = get_val('city')
-    state = get_val('state')
-    postal_code = get_val('postal_code', 'zip_code')
-    insurance = get_val('insurance', 'insurance_provider')
-    insurance_number = get_val('insurance_number', 'policy_number')
-    diagnosis = get_val('diagnosis')
-    notes = get_val('notes', 'clinical_notes')
-    doctor_id = get_val('doctor_id')
-
-    country = os.getenv('HMS_COUNTRY', 'AR').upper()
+    dob_raw = get_val('dob', 'date_of_birth')
+    doctor_id_raw = get_val('doctor_id')
 
     if not last_name or not first_name:
-        msg = (
-            'Debe ingresar al menos Nombre y Apellido.' if country == 'AR'
-            else ('Deve informar ao menos Nome e Sobrenome.' if country == 'BR'
-            else 'At least First Name and Last Name must be provided.')
-        )
-        return JsonResponse({
-            'status': 'error',
-            'message': msg
-        }, status=400)
+        return _error(txt['error_name_required'])
 
-    if patient_id:
+    # ID de paciente: vacío = alta; si viene, tiene que ser numérico.
+    patient_id = None
+    if patient_id_raw:
+        patient_id = _parse_id(patient_id_raw)
+        if patient_id is None:
+            return _error('Invalid patient id.')
+
+    # Fecha de nacimiento: se valida acá para no depender del error de la base.
+    dob = None
+    if dob_raw:
+        try:
+            dob = date.fromisoformat(dob_raw)
+        except ValueError:
+            return _error('Invalid date of birth (expected YYYY-MM-DD).')
+
+    # Médico: las tablas no tienen FOREIGN KEY (para permitir el TRUNCATE del
+    # masking on-the-fly), así que la existencia se valida en la aplicación.
+    doctor_id = None
+    if doctor_id_raw:
+        doctor_id = _parse_id(doctor_id_raw)
+        if doctor_id is None or not Medico.objects.filter(pk=doctor_id).exists():
+            return _error(txt['error_doctor_not_found'])
+
+    if patient_id is not None:
         paciente = get_object_or_404(Paciente, pk=patient_id)
         if doc_primary:
             paciente.dni = doc_primary
         if doc_secondary:
             paciente.cuil = doc_secondary
-        paciente.apellido = last_name
-        paciente.nombre = first_name
         if dob:
             paciente.fecha_nacimiento = dob
-        paciente.telefono_celular = phone or ''
-        paciente.email = email or ''
-        paciente.direccion = address or ''
-        paciente.localidad = city or ''
-        paciente.provincia = state or ''
-        if hasattr(paciente, 'codigo_postal'):
-            paciente.codigo_postal = postal_code or ''
-        paciente.obra_social = insurance or ''
-        paciente.numero_afiliado = insurance_number or ''
-        paciente.diagnostico_clinico = diagnosis or ''
-        paciente.historia_clinica = notes or ''
-        if doctor_id and doctor_id.isdigit():
-            paciente.medico_asignado_id = int(doctor_id)
+        if doctor_id is not None:
+            paciente.medico_asignado_id = doctor_id
     else:
         try:
             doc_primary, doc_secondary = generate_unique_patient_identifiers(
-                country=country,
+                country=settings.HMS_COUNTRY,
                 paciente_model=Paciente,
                 doc_primary=doc_primary or None,
                 doc_secondary=doc_secondary or None,
@@ -401,45 +307,34 @@ def patient_save(request):
             )
         except Exception:
             logger.exception("Error generating synthetic identifiers for patient")
-            return JsonResponse({
-                'status': 'error',
-                'message': 'Database error while generating synthetic identifiers.'
-            }, status=400)
+            return _error('Database error while generating synthetic identifiers.')
 
         paciente = Paciente()
         paciente.dni = doc_primary
         paciente.cuil = doc_secondary
-        paciente.apellido = last_name
-        paciente.nombre = first_name
-        if dob:
-            paciente.fecha_nacimiento = dob
-        else:
-            from datetime import date
-            paciente.fecha_nacimiento = date(1990, 1, 1)
+        paciente.fecha_nacimiento = dob or date(1990, 1, 1)
+        paciente.medico_asignado_id = doctor_id
 
-        paciente.telefono_celular = phone or ''
-        paciente.email = email or ''
-        paciente.direccion = address or ''
-        paciente.localidad = city or ''
-        paciente.provincia = state or ''
-        if hasattr(paciente, 'codigo_postal'):
-            paciente.codigo_postal = postal_code or ''
-        paciente.obra_social = insurance or ''
-        paciente.numero_afiliado = insurance_number or ''
-        paciente.diagnostico_clinico = diagnosis or ''
-        paciente.historia_clinica = notes or ''
-        paciente.medico_asignado_id = int(doctor_id) if doctor_id and doctor_id.isdigit() else None
+    paciente.apellido = last_name
+    paciente.nombre = first_name
+    paciente.telefono_celular = get_val('phone', 'phone_number')
+    paciente.email = get_val('email')
+    paciente.direccion = get_val('address')
+    paciente.localidad = get_val('city')
+    paciente.provincia = get_val('state')
+    paciente.codigo_postal = get_val('postal_code', 'zip_code')
+    paciente.obra_social = get_val('insurance', 'insurance_provider')
+    paciente.numero_afiliado = get_val('insurance_number', 'policy_number')
+    paciente.diagnostico_clinico = get_val('diagnosis')
+    paciente.historia_clinica = get_val('notes', 'clinical_notes')
 
     try:
         paciente.save()
-    except Exception as e:
+    except Exception:
         logger.exception("Error saving patient")
-        return JsonResponse({
-            'status': 'error',
-            'message': 'Database error while saving patient.'
-        }, status=400)
+        return _error('Database error while saving patient.')
 
-    action = "updated" if patient_id else "created"
+    action = "updated" if patient_id is not None else "created"
     return JsonResponse({
         'status': 'ok',
         'id': paciente.id,
@@ -458,16 +353,12 @@ def patient_delete(request, pk):
     full_name = f"{paciente.apellido}, {paciente.nombre}"
     try:
         paciente.delete()
-    except Exception as e:
+    except Exception:
         logger.exception("Error deleting patient")
-        return JsonResponse({
-            'status': 'error',
-            'message': 'Database error while deleting patient.'
-        }, status=400)
+        return _error('Database error while deleting patient.')
     return JsonResponse({
         'status': 'ok',
         'id': pk,
         'patient_id': pk,
         'message': f'Patient {full_name} deleted successfully.'
     })
-

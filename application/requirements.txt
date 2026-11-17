@@ -1,5 +1,8 @@
-Django>=5.1,<5.3
-mssql-django>=1.8.0
-pyodbc>=5.0.0
-gunicorn>=22.0.0
-whitenoise>=6.7.0
+# Versiones fijas: un rebuild de la imagen antes de una demo no debe traer
+# versiones nuevas sin probar. Para actualizar, cambiar acá y correr
+# application/run_smoke_tests.sh.
+Django==5.2.19
+mssql-django==2.0.0
+pyodbc==5.3.0
+gunicorn==26.2.0
+whitenoise==6.12.0

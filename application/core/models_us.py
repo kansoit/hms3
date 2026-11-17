@@ -6,10 +6,10 @@ class Specialty(models.Model):
     Medical Specialty Catalog (USA).
     Table: SPECIALTIES
     """
-    name = models.CharField(
+    specialty = models.CharField(
         max_length=60,
         unique=True,
-        db_column='NAME',
+        db_column='SPECIALTY',
         verbose_name="Specialty Name"
     )
     description = models.CharField(
@@ -25,18 +25,10 @@ class Specialty(models.Model):
         managed = False
         verbose_name = 'Medical Specialty'
         verbose_name_plural = 'Medical Specialties'
-        ordering = ['name']
+        ordering = ['specialty']
 
     def __str__(self):
-        return self.name
-
-    @property
-    def nombre(self):
-        return self.name
-
-    @nombre.setter
-    def nombre(self, val):
-        self.name = val
+        return self.specialty
 
 
 class Doctor(models.Model):
@@ -82,6 +74,12 @@ class Doctor(models.Model):
     specialty = models.ForeignKey(
         Specialty,
         on_delete=models.PROTECT,
+        # Las tablas no tienen FOREIGN KEY en la base (ver seeders).
+        db_constraint=False,
+        # La columna es NOT NULL en la base. null=True solo hace que el ORM use
+        # LEFT JOIN: como no hay FOREIGN KEY, un médico cuya especialidad no existe
+        # se muestra "sin especialidad" en lugar de desaparecer de los listados.
+        null=True,
         db_column='SPECIALTY_ID',
         related_name='doctors',
         verbose_name="Specialty"
@@ -105,7 +103,7 @@ class Doctor(models.Model):
         ordering = ['last_name', 'first_name']
 
     def __str__(self):
-        spec_name = self.specialty.name if self.specialty else "General Practice"
+        spec_name = str(self.specialty) if self.specialty else "General Practice"
         return f"Dr. {self.first_name} {self.last_name}, MD ({spec_name}) - NPI: {self.npi}"
 
     @property
@@ -286,6 +284,8 @@ class Patient(models.Model):
     assigned_doctor = models.ForeignKey(
         Doctor,
         on_delete=models.SET_NULL,
+        # Las tablas no tienen FOREIGN KEY en la base (ver seeders).
+        db_constraint=False,
         null=True,
         blank=True,
         db_column='DOCTOR_ID',

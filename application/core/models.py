@@ -1,6 +1,10 @@
-import os
+"""
+Modelos activos según el país configurado (settings.HMS_COUNTRY, ya validado).
+El resto de la app importa siempre Especialidad, Medico y Paciente desde acá.
+"""
+from django.conf import settings
 
-HMS_COUNTRY = os.getenv('HMS_COUNTRY', 'AR').upper()
+HMS_COUNTRY = settings.HMS_COUNTRY
 
 if HMS_COUNTRY == 'US':
     from .models_us import Specialty as Especialidad, Doctor as Medico, Patient as Paciente

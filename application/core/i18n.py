@@ -1,4 +1,4 @@
-import os
+from django.conf import settings
 
 TEXTS = {
     'AR': {
@@ -69,6 +69,12 @@ TEXTS = {
         'error_name_required': 'Debe ingresar al menos Nombre y Apellido.',
         'uat_failure_hint': 'Simulación de Falla de Datos en UAT',
         'uat_failure_desc': 'En un entorno de pruebas convencional, un borrado accidental o corrupción de datos requeriría horas de restauración física. Con Delphix, podés realizar un <strong>Rewind instantáneo</strong> en segundos.',
+        'no_doctor': 'Sin asignar',
+        'no_specialty': 'Sin especialidad',
+        'error_doctor_not_found': 'El médico seleccionado no existe.',
+        'db_unavailable_title': 'Base de datos no disponible',
+        'db_unavailable_desc': 'La aplicación no puede leer la base de datos. Puede estar reiniciándose, en pleno refresh o rewind de la VDB, o todavía sin datos cargados.',
+        'db_unavailable_retry': 'Reintentando automáticamente en',
     },
     'BR': {
         'country': 'BR',
@@ -138,6 +144,12 @@ TEXTS = {
         'error_name_required': 'Deve informar ao menos Nome e Sobrenome.',
         'uat_failure_hint': 'Simulação de Falha de Dados em Homologação / UAT',
         'uat_failure_desc': 'Em um ambiente tradicional de testes, uma exclusão indevida ou corrupção exigiria horas de restauração de backup. Com Delphix, você executa um <strong>Rewind instantâneo</strong> em segundos.',
+        'no_doctor': 'Sem médico atribuído',
+        'no_specialty': 'Sem especialidade',
+        'error_doctor_not_found': 'O médico selecionado não existe.',
+        'db_unavailable_title': 'Banco de dados indisponível',
+        'db_unavailable_desc': 'A aplicação não consegue ler o banco de dados. Ele pode estar reiniciando, em pleno refresh ou rewind da VDB, ou ainda sem dados carregados.',
+        'db_unavailable_retry': 'Tentando novamente em',
     },
     'US': {
         'country': 'US',
@@ -207,11 +219,15 @@ TEXTS = {
         'error_name_required': 'At least First Name and Last Name must be provided.',
         'uat_failure_hint': 'UAT Data Failure & Regression Simulation',
         'uat_failure_desc': 'In traditional testing environments, accidental record deletion or corruption requires hours of database restores. With Delphix, you can execute an <strong>Instant Rewind</strong> in seconds.',
+        'no_doctor': 'No physician assigned',
+        'no_specialty': 'No specialty',
+        'error_doctor_not_found': 'The selected physician does not exist.',
+        'db_unavailable_title': 'Database not available',
+        'db_unavailable_desc': 'The application cannot read the database. It may be restarting, in the middle of a VDB refresh or rewind, or not seeded yet.',
+        'db_unavailable_retry': 'Retrying automatically in',
     }
 }
 
 
 def get_country_text(country_code=None):
-    if not country_code:
-        country_code = os.getenv('HMS_COUNTRY', 'AR').upper()
-    return TEXTS.get(country_code, TEXTS['AR'])
+    return TEXTS[country_code or settings.HMS_COUNTRY]

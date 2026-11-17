@@ -8,10 +8,14 @@ Supports both Podman and Docker engines automatically with zero host dependencie
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -233,6 +237,101 @@ def get_container_country(cmd_prefix: List[str], container_name: str) -> Optiona
     return None
 
 
+def git_build_id() -> str:
+    """Short commit of the repo, with '-dirty' if there are uncommitted changes."""
+    try:
+        sha = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(BASE_DIR), capture_output=True, text=True, check=True, timeout=5,
+        ).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=str(BASE_DIR), capture_output=True, text=True, check=True, timeout=5,
+        ).stdout.strip()
+        return f"{sha}-dirty" if dirty else sha
+    except Exception:
+        return "unknown"
+
+
+def build_image(cmd_prefix: List[str], tag: str, no_cache: bool = False) -> int:
+    """Builds the image and stamps it with the repo commit (HMS_BUILD)."""
+    build_id = git_build_id()
+    print_info(f"Building container image '{tag}' (build {build_id})...")
+    build_cmd = cmd_prefix + ["build", "-t", tag, "-f", "Dockerfile.django", "--build-arg", f"HMS_BUILD={build_id}"]
+    if no_cache:
+        build_cmd.append("--no-cache")
+    build_cmd.append(".")
+    res = subprocess.run(build_cmd, cwd=str(BASE_DIR))
+    if res.returncode != 0:
+        print_error("Failed to build container image.")
+    else:
+        print_ok(f"Image '{tag}' built successfully (build {build_id}).")
+    return res.returncode
+
+
+def fetch_health(port: str, timeout: float = 3.0) -> Optional[Dict[str, object]]:
+    """
+    Calls /api/health/ of the app published on the given host port.
+    Returns the JSON (status UP or DOWN) or None if the app does not answer.
+    """
+    url = f"http://127.0.0.1:{port}/api/health/"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as err:
+        # 503 = app is up but the database is not available
+        try:
+            return json.loads(err.read().decode("utf-8"))
+        except Exception:
+            return None
+    except Exception:
+        return None
+
+
+def integrity_warning(health: Dict[str, object]) -> Optional[str]:
+    """Message describing broken references between tables, or None if there are none."""
+    if health.get("integrity") != "BROKEN":
+        return None
+    return (f"Broken references in '{health.get('database')}': "
+            f"{health.get('doctors_without_specialty', 0)} doctors point to a missing specialty, "
+            f"{health.get('patients_with_missing_doctor', 0)} patients point to a missing doctor. "
+            f"The tables have no foreign keys, so check the masking ruleset: it must include the three tables "
+            f"and must not mask the ID / relationship columns.")
+
+
+def wait_for_health(port: str, seconds: int = 30) -> Optional[Dict[str, object]]:
+    """Polls the health endpoint until the app answers (UP or DOWN) or the time runs out."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        health = fetch_health(port)
+        if health is not None:
+            return health
+        time.sleep(1)
+    return None
+
+
+def report_health(container_name: str, port: str, access_url: str) -> int:
+    """Verifies the app really works and prints the outcome. Returns the exit code."""
+    print_info("Waiting for the application to answer its health check...")
+    health = wait_for_health(port)
+    if health is None:
+        print_error(f"Container '{container_name}' started but the application does not answer on port {port}.")
+        print_info("Check the logs with: ./hms-ctl.py logs -e <env> -c <country>")
+        return 1
+    if health.get("status") != "UP":
+        print_warn(f"Application is running at {access_url} but the DATABASE IS NOT AVAILABLE "
+                   f"({health.get('database', '-')}).")
+        print_info("The app shows a 'database not available' page and recovers by itself when the database is back.")
+        print_info("If the database is empty, load data with the seed command for this country.")
+        return 0
+    print_ok(f"Health check OK: database '{health.get('database')}' with {health.get('patients')} patients, "
+             f"{health.get('doctors')} doctors, {health.get('specialties')} specialties (build {health.get('build')}).")
+    warning = integrity_warning(health)
+    if warning:
+        print_warn(warning)
+    return 0
+
+
 def parse_env_file(filepath: Path) -> Dict[str, str]:
     data = {}
     if not filepath.is_file():
@@ -290,13 +389,9 @@ def cmd_start(args: argparse.Namespace) -> int:
 
     # Optional Rebuild
     if getattr(args, "build", False):
-        print_info(f"Rebuilding container image '{DEFAULT_IMAGE}'...")
-        build_cmd = cmd_prefix + ["build", "-t", DEFAULT_IMAGE, "-f", "Dockerfile.django", "."]
-        res = subprocess.run(build_cmd, cwd=str(BASE_DIR))
-        if res.returncode != 0:
-            print_error("Failed to build container image.")
-            return res.returncode
-        print_ok("Image built successfully.")
+        rc = build_image(cmd_prefix, DEFAULT_IMAGE)
+        if rc != 0:
+            return rc
 
     # Check if container already exists
     if container_exists(cmd_prefix, container_name):
@@ -325,7 +420,7 @@ def cmd_start(args: argparse.Namespace) -> int:
             res = subprocess.run(cmd_prefix + ["start", container_name], capture_output=True, text=True)
             if res.returncode == 0:
                 print_ok(f"Container '{container_name}' ({req_code}) started.")
-                return 0
+                return report_health(container_name, host_port, f"http://{get_host_ip()}:{host_port}/")
             else:
                 print_error(f"Failed to start container:\n{res.stderr.strip()}")
                 return res.returncode
@@ -354,15 +449,25 @@ def cmd_start(args: argparse.Namespace) -> int:
     host_ip = get_host_ip()
     access_url = f"http://{host_ip}:{host_port}/"
 
+    # The container being up is not enough: confirm the app answers and reads the database.
+    rc = report_health(container_name, host_port, access_url)
+    if rc != 0:
+        return rc
+
+    health = fetch_health(host_port) or {}
+    healthy = health.get("status") == "UP"
+    color = Colors.GREEN if healthy else Colors.YELLOW
+    title = "SUCCESS! HMS 3.0 is live and running." if healthy else "HMS 3.0 is running, but the DATABASE IS NOT AVAILABLE."
+
     print("")
-    print(Colors.color("═" * 60, Colors.GREEN))
-    print(f" {Colors.color('SUCCESS! HMS 3.0 is live and running.', Colors.BOLD)}")
-    print(Colors.color("─" * 60, Colors.GREEN))
+    print(Colors.color("═" * 60, color))
+    print(f" {Colors.color(title, Colors.BOLD)}")
+    print(Colors.color("─" * 60, color))
     print(f" Environment : {Colors.color(env_meta['label'], Colors.WHITE)}")
     print(f" Country     : {Colors.color(country_meta['label'], Colors.WHITE)}")
     print(f" Container   : {Colors.color(container_name, Colors.BOLD)}")
     print(f" URL         : {Colors.color(access_url, Colors.CYAN)}")
-    print(Colors.color("═" * 60, Colors.GREEN))
+    print(Colors.color("═" * 60, color))
     return 0
 
 
@@ -483,13 +588,9 @@ def cmd_restart(args: argparse.Namespace) -> int:
 
     # Optional Rebuild
     if getattr(args, "build", False):
-        print_info(f"Rebuilding container image '{DEFAULT_IMAGE}'...")
-        build_cmd = cmd_prefix + ["build", "-t", DEFAULT_IMAGE, "-f", "Dockerfile.django", "."]
-        res = subprocess.run(build_cmd, cwd=str(BASE_DIR))
-        if res.returncode != 0:
-            print_error("Failed to build container image.")
-            return res.returncode
-        print_ok("Image built successfully.")
+        rc = build_image(cmd_prefix, DEFAULT_IMAGE)
+        if rc != 0:
+            return rc
         print_info(f"Recreating container '{container_name}' ({req_code}) with new image...")
         if container_is_running(cmd_prefix, container_name):
             subprocess.run(cmd_prefix + ["stop", "-t", "2", container_name], capture_output=True)
@@ -502,7 +603,8 @@ def cmd_restart(args: argparse.Namespace) -> int:
     res = subprocess.run(cmd_prefix + ["restart", "-t", "2", container_name], capture_output=True, text=True)
     if res.returncode == 0:
         print_ok(f"Container '{container_name}' ({req_code}) restarted successfully.")
-        return 0
+        port = existing_vars.get("HOST_PORT", str(ENVIRONMENTS_META[env_name]["port"]))
+        return report_health(container_name, port, f"http://{get_host_ip()}:{port}/")
     else:
         print_error(f"Failed to restart container:\n{res.stderr.strip()}")
         return res.returncode
@@ -512,13 +614,18 @@ def cmd_status(args: argparse.Namespace) -> int:
     engine, cmd_prefix, ver_str = detect_engine(args.engine)
     host_ip = get_host_ip()
 
-    print(Colors.color("═" * 78, Colors.CYAN))
-    print(f" {Colors.color('HMS 3.0 STATUS OVERVIEW', Colors.BOLD)} • Engine: {Colors.color(ver_str, Colors.GREEN)}")
-    print(Colors.color("═" * 78, Colors.CYAN))
+    repo_build = git_build_id()
+    stale = False
+    warnings: List[str] = []
 
-    header = f"{'PROJECT':<12} {'ENV':<6} {'COUNTRY':<10} {'PORT':<6} {'STATUS':<12} {'URL':<30}"
+    print(Colors.color("═" * 100, Colors.CYAN))
+    print(f" {Colors.color('HMS 3.0 STATUS OVERVIEW', Colors.BOLD)} • Engine: {Colors.color(ver_str, Colors.GREEN)}"
+          f" • Repo build: {repo_build}")
+    print(Colors.color("═" * 100, Colors.CYAN))
+
+    header = f"{'PROJECT':<12} {'ENV':<6} {'COUNTRY':<8} {'PORT':<6} {'STATUS':<12} {'HEALTH':<16} {'BUILD':<14} {'URL':<26}"
     print(Colors.color(header, Colors.BOLD))
-    print(Colors.color("─" * 78, Colors.DIM))
+    print(Colors.color("─" * 100, Colors.DIM))
 
     for env_key, meta in ENVIRONMENTS_META.items():
         if getattr(args, "env", None) and args.env.lower() != env_key:
@@ -534,24 +641,49 @@ def cmd_status(args: argparse.Namespace) -> int:
             port = env_vars.get("HOST_PORT", str(default_port))
             if getattr(args, "country", None) and args.country.upper() != country_code.upper():
                 continue
-            if running:
-                status_str = Colors.color("RUNNING", Colors.GREEN)
-                url_str = Colors.color(f"http://{host_ip}:{port}/", Colors.CYAN)
+            build = env_vars.get("HMS_BUILD", "unknown")
+            if build != repo_build:
+                stale = True
+                build_str = Colors.color(f"{build} *".ljust(14), Colors.YELLOW)
             else:
-                status_str = Colors.color("STOPPED", Colors.YELLOW)
+                build_str = Colors.color(build.ljust(14), Colors.GREEN)
+            if running:
+                status_str = Colors.color("RUNNING".ljust(12), Colors.GREEN)
+                url_str = Colors.color(f"http://{host_ip}:{port}/", Colors.CYAN)
+                # Real check: does the app answer and can it read the database?
+                health = fetch_health(port, timeout=5.0)
+                if health is None:
+                    health_str = Colors.color("NO RESPONSE".ljust(16), Colors.RED)
+                elif health.get("status") == "UP" and integrity_warning(health):
+                    health_str = Colors.color("BROKEN REFS".ljust(16), Colors.YELLOW)
+                    warnings.append(f"{c_name}: {integrity_warning(health)}")
+                elif health.get("status") == "UP":
+                    health_str = Colors.color(f"OK ({health.get('patients')} pat.)".ljust(16), Colors.GREEN)
+                else:
+                    health_str = Colors.color("DB DOWN".ljust(16), Colors.RED)
+            else:
+                status_str = Colors.color("STOPPED".ljust(12), Colors.YELLOW)
                 url_str = f"http://{host_ip}:{port}/ (offline)"
+                health_str = Colors.color("-".ljust(16), Colors.DIM)
         else:
             if getattr(args, "country", None):
                 continue
             country_code = "-"
             port = str(default_port)
-            status_str = Colors.color("NOT CREATED", Colors.DIM)
+            status_str = Colors.color("NOT CREATED".ljust(12), Colors.DIM)
+            health_str = Colors.color("-".ljust(16), Colors.DIM)
+            build_str = Colors.color("-".ljust(14), Colors.DIM)
             url_str = "-"
 
-        row = f"{c_name:<12} {env_key:<6} {country_code:<10} {port:<6} {status_str:<21} {url_str}"
+        row = f"{c_name:<12} {env_key:<6} {country_code:<8} {port:<6} {status_str} {health_str} {build_str} {url_str}"
         print(row)
 
-    print(Colors.color("═" * 78, Colors.CYAN))
+    print(Colors.color("═" * 100, Colors.CYAN))
+    for warning in warnings:
+        print_warn(warning)
+    if stale:
+        print_warn(f"* Container built from a different commit than the repo ({repo_build}). "
+                   f"Code changes are not applied until you rebuild: './hms-ctl.py restart -e <env> -c <country> --build'.")
     return 0
 
 
@@ -598,19 +730,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     engine, cmd_prefix, ver_str = detect_engine(args.engine)
     tag = getattr(args, "tag", DEFAULT_IMAGE) or DEFAULT_IMAGE
 
-    print_info(f"Building container image '{tag}' using {engine}...")
-    build_cmd = cmd_prefix + ["build", "-t", tag, "-f", "Dockerfile.django"]
-    if getattr(args, "no_cache", False):
-        build_cmd.append("--no-cache")
-    build_cmd.append(".")
-
-    res = subprocess.run(build_cmd, cwd=str(BASE_DIR))
-    if res.returncode == 0:
-        print_ok(f"Image '{tag}' built successfully.")
-        return 0
-    else:
-        print_error("Image build failed.")
-        return res.returncode
+    return build_image(cmd_prefix, tag, no_cache=getattr(args, "no_cache", False))
 
 
 # CLI Parser Construction

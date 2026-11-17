@@ -1,11 +1,8 @@
 import random
 from datetime import date, timedelta
-import pyodbc
-from django.conf import settings
-from django.core.management.base import BaseCommand
-from django.db import connection, transaction
+
+from core.management.seed_base import BaseSeedCommand, email_slug
 from core.synthetic_identifiers import generate_br_cpf as calcular_cpf_valido, generate_br_rg as gerar_rg_brasileiro
-generar_rg_brasileiro = gerar_rg_brasileiro
 
 NOMBRES_MASCULINOS = [
     "Arthur", "Bernardo", "Davi", "Gabriel", "Heitor", "Lucas", "Matheus", "Pedro", 
@@ -135,292 +132,159 @@ LOGRADOUROS_BRASIL = [
 ]
 
 
-class Command(BaseCommand):
+class Command(BaseSeedCommand):
     help = 'Povoa a base de dados brasileira com CPFs sintéticos (Módulo 11), RGs, CRMs e Prontuários para LGPD.'
+    country = 'BR'
 
-    def add_arguments(self, parser):
-        parser.add_argument('--pacientes', type=int, default=40, help='Quantidade de pacientes')
-        parser.add_argument('--medicos', type=int, default=10, help='Quantidade de médicos')
-        parser.add_argument('--clean', action='store_true', help='Limpa tabelas e reseta IDs em 0')
+    # Sem FOREIGN KEY de propósito: permite o TRUNCATE do masking on-the-fly.
+    ddl = """
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ESPECIALIDADES')
+        CREATE TABLE ESPECIALIDADES (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            ESPECIALIDADE NVARCHAR(60) NOT NULL UNIQUE,
+            DESCRICAO NVARCHAR(255) NULL
+        );
 
-    def asegurar_base_dados(self):
-        """Cria a base de dados no SQL Server se não existir (Dia 0)."""
-        db_conf = settings.DATABASES.get('default', {})
-        engine = db_conf.get('ENGINE', '')
-        if 'mssql' not in engine:
-            return
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'MEDICOS')
+        CREATE TABLE MEDICOS (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            CRM NVARCHAR(20) NOT NULL UNIQUE,
+            ESTADO_CRM NVARCHAR(10) NOT NULL DEFAULT 'SP',
+            CPF NVARCHAR(15) NOT NULL UNIQUE,
+            RG NVARCHAR(15) NOT NULL UNIQUE,
+            SOBRENOME NVARCHAR(60) NOT NULL,
+            NOME NVARCHAR(60) NOT NULL,
+            ESPECIALIDADE_ID INT NOT NULL,
+            TELEFONE_CELULAR NVARCHAR(25) NOT NULL,
+            EMAIL NVARCHAR(100) NOT NULL
+        );
 
-        target_db = db_conf.get('NAME')
-        if not target_db:
-            return
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'PACIENTES')
+        CREATE TABLE PACIENTES (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            CPF NVARCHAR(15) NOT NULL UNIQUE,
+            RG NVARCHAR(15) NOT NULL UNIQUE,
+            SOBRENOME NVARCHAR(60) NOT NULL,
+            NOME NVARCHAR(60) NOT NULL,
+            DATA_NASCIMENTO DATE NOT NULL,
+            TELEFONE_CELULAR NVARCHAR(25) NOT NULL,
+            EMAIL NVARCHAR(100) NOT NULL,
+            ENDERECO NVARCHAR(120) NOT NULL,
+            CIDADE NVARCHAR(60) NOT NULL,
+            ESTADO NVARCHAR(10) NOT NULL,
+            CEP NVARCHAR(10) NOT NULL,
+            CONVENIO NVARCHAR(60) NOT NULL,
+            NUMERO_CARTEIRINHA NVARCHAR(30) NOT NULL,
+            DIAGNOSTICO NVARCHAR(150) NOT NULL,
+            PRONTUARIO NVARCHAR(MAX) NOT NULL,
+            MEDICO_ID INT NULL,
+            DATA_INTERNACAO DATE NOT NULL DEFAULT GETDATE()
+        );
+    """
 
-        host = db_conf.get('HOST')
-        port = db_conf.get('PORT', '1433')
-        user = db_conf.get('USER', 'sa')
-        password = db_conf.get('PASSWORD', '')
-        driver = db_conf.get('OPTIONS', {}).get('driver', 'ODBC Driver 18 for SQL Server')
-        extra = db_conf.get('OPTIONS', {}).get('extra_params', 'TrustServerCertificate=yes;')
+    def get_models(self):
+        from core.models_br import Especialidade, Medico, Paciente
+        return (Especialidade, Medico, Paciente)
 
-        conn_str = f"DRIVER={{{driver}}};SERVER={host},{port};DATABASE=master;UID={user};PWD={password};{extra}"
-        try:
-            conn = pyodbc.connect(conn_str, autocommit=True, timeout=10)
-            cursor = conn.cursor()
-            cursor.execute("SELECT database_id FROM sys.databases WHERE name = ?", (target_db,))
-            row = cursor.fetchone()
-            if not row:
-                self.stdout.write(self.style.WARNING(f"-> Base de dados '{target_db}' não encontrada. Criando no SQL Server..."))
-                safe_db_name = target_db.replace("]", "]]")
-                cursor.execute(f"CREATE DATABASE [{safe_db_name}];")
-                self.stdout.write(self.style.SUCCESS(f"-> Base de dados '{target_db}' criada com sucesso!"))
+    def populate(self, cant_medicos, cant_pacientes):
+        Especialidade, Medico, Paciente = self.get_models()
+
+        # 1. Especialidades
+        self.stdout.write("-> Criando catálogo de especialidades médicas (Brasil)...")
+        especialidades_objs = [
+            Especialidade.objects.create(especialidade=esp_nome, descricao=esp_desc)
+            for esp_nome, esp_desc in ESPECIALIDADES_BRASIL
+        ]
+
+        # 2. Médicos
+        self.stdout.write(f"-> Gerando {cant_medicos} médicos brasileiros com CRM e CPF...")
+        medicos_creados = []
+        used_names = set()
+        used_cpfs, used_rgs, used_crms = set(), set(), set()
+
+        for i in range(cant_medicos):
+            genero, nome, sobrenome = self.pick_person(NOMBRES_MASCULINOS, NOMBRES_FEMENINOS, SOBRENOMES, used_names)
+
+            cpf = self.unique(calcular_cpf_valido, used_cpfs)
+            estado_crm = random.choice(['SP', 'RJ', 'MG', 'PR', 'RS'])
+            rg = self.unique(lambda: gerar_rg_brasileiro(estado_crm), used_rgs)
+            crm = self.unique(lambda: str(random.randint(110000, 499999)), used_crms)
+            esp = especialidades_objs[i % len(especialidades_objs)]
+            telefone = f"+55 {random.choice([11, 21, 31, 41])} 9{random.randint(7000, 9999)}-{random.randint(1000, 9999)}"
+            email = f"{email_slug(nome)}.{email_slug(sobrenome)}@hospitalmetropolitano.com.br"
+
+            medico = Medico.objects.create(
+                crm=crm,
+                estado_crm=estado_crm,
+                cpf=cpf,
+                rg=rg,
+                sobrenome=sobrenome,
+                nome=nome,
+                especialidade=esp,
+                telefone_celular=telefone,
+                email=email
+            )
+            medicos_creados.append(medico)
+
+        # 3. Pacientes
+        self.stdout.write(f"-> Gerando {cant_pacientes} pacientes brasileiros com prontuários e LGPD...")
+        hoy = date.today()
+        used_cpfs, used_rgs = set(), set()
+
+        for j in range(cant_pacientes):
+            genero, nome, sobrenome = self.pick_person(NOMBRES_MASCULINOS, NOMBRES_FEMENINOS, SOBRENOMES, used_names)
+
+            cpf = self.unique(calcular_cpf_valido, used_cpfs)
+            logradouro, cidade, estado, cep = random.choice(LOGRADOUROS_BRASIL)
+            rg = self.unique(lambda: gerar_rg_brasileiro(estado), used_rgs)
+            numero_casa = random.randint(10, 3500)
+            comp = f", Apto {random.randint(11, 142)}" if random.random() > 0.4 else ""
+            endereco = f"{logradouro}, {numero_casa}{comp}"
+
+            dias_vida = random.randint(18 * 365, 80 * 365)
+            data_nasc = hoy - timedelta(days=dias_vida)
+
+            convenio = random.choice(CONVENIOS_BRASIL)
+            carteirinha = f"{random.randint(100000000, 999999999)}-{random.randint(0, 9)}"
+
+            # Seleção de médico e diagnóstico
+            if genero == 'M':
+                candidatos = [m for m in medicos_creados if m.especialidade.especialidade != 'Ginecologia e Obstetrícia']
             else:
-                self.stdout.write(f"-> Base de dados '{target_db}' verificada no SQL Server.")
-            conn.close()
-            connection.close()
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Erro ao verificar/criar a base de dados '{target_db}': {e}"))
-            raise
+                candidatos = medicos_creados
+            medico_asignado = random.choice(candidatos if candidatos else medicos_creados)
 
-    def asegurar_tabelas(self, drop_first=False):
-        """Cria as tabelas em SQL Server se ainda não existirem, ou as recria se drop_first=True."""
-        with connection.cursor() as cursor:
-            cursor.execute("""
-            SELECT COUNT(*) FROM sys.tables WHERE name = 'PACIENTES';
-            """)
-            has_pacientes = cursor.fetchone()[0] > 0
-            if has_pacientes and not drop_first:
-                cursor.execute("""
-                SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('PACIENTES') AND name = 'CPF';
-                """)
-                if cursor.fetchone()[0] == 0:
-                    self.stdout.write(self.style.WARNING("-> Detectado schema anterior incompatível em PACIENTES. Recriando tabelas..."))
-                    drop_first = True
+            posibles_diag = DIAGNOSTICOS_POR_ESPECIALIDADE.get(
+                medico_asignado.especialidade.especialidade,
+                [("Consulta de rotina", "Avaliação clínica preventiva periódica.")]
+            )
+            if medico_asignado.especialidade.especialidade == 'Urologia' and genero == 'F':
+                posibles_diag = [d for d in posibles_diag if "prostática" not in d[0].lower()]
+            diag_titulo, diag_historia = random.choice(posibles_diag)
 
-            if drop_first:
-                self.stdout.write(self.style.WARNING("-> Excluindo tabelas anteriores para recriação limpa..."))
-                cursor.execute("""
-                IF OBJECT_ID('dbo.PACIENTES', 'U') IS NOT NULL DROP TABLE dbo.PACIENTES;
-                IF OBJECT_ID('dbo.MEDICOS', 'U') IS NOT NULL DROP TABLE dbo.MEDICOS;
-                IF OBJECT_ID('dbo.ESPECIALIDADES', 'U') IS NOT NULL DROP TABLE dbo.ESPECIALIDADES;
-                IF OBJECT_ID('dbo.PATIENTS', 'U') IS NOT NULL DROP TABLE dbo.PATIENTS;
-                IF OBJECT_ID('dbo.DOCTORS', 'U') IS NOT NULL DROP TABLE dbo.DOCTORS;
-                IF OBJECT_ID('dbo.SPECIALTIES', 'U') IS NOT NULL DROP TABLE dbo.SPECIALTIES;
-                """)
+            telefone = f"+55 {random.choice([11, 21, 31, 41])} 9{random.randint(7000, 9999)}-{random.randint(1000, 9999)}"
+            email = f"{email_slug(nome)}.{email_slug(sobrenome)}{random.randint(10, 99)}@gmail.com"
 
-            cursor.execute("""
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ESPECIALIDADES')
-            CREATE TABLE ESPECIALIDADES (
-                ID INT IDENTITY(1,1) PRIMARY KEY,
-                NOME NVARCHAR(60) NOT NULL UNIQUE,
-                DESCRICAO NVARCHAR(255) NULL
-            );
-            
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'MEDICOS')
-            CREATE TABLE MEDICOS (
-                ID INT IDENTITY(1,1) PRIMARY KEY,
-                CRM NVARCHAR(20) NOT NULL UNIQUE,
-                ESTADO_CRM NVARCHAR(10) NOT NULL DEFAULT 'SP',
-                CPF NVARCHAR(15) NOT NULL UNIQUE,
-                RG NVARCHAR(15) NOT NULL UNIQUE,
-                SOBRENOME NVARCHAR(60) NOT NULL,
-                NOME NVARCHAR(60) NOT NULL,
-                ESPECIALIDADE_ID INT NOT NULL,
-                TELEFONE_CELULAR NVARCHAR(25) NOT NULL,
-                EMAIL NVARCHAR(100) NOT NULL
-            );
+            Paciente.objects.create(
+                cpf=cpf,
+                rg=rg,
+                sobrenome=sobrenome,
+                nome=nome,
+                data_nascimento=data_nasc,
+                telefone_celular=telefone,
+                email=email,
+                endereco=endereco,
+                cidade=cidade,
+                estado=estado,
+                cep=cep,
+                convenio=convenio,
+                numero_carteirinha=carteirinha,
+                diagnostico=diag_titulo,
+                prontuario=diag_historia,
+                medico_responsavel=medico_asignado
+            )
 
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'PACIENTES')
-            CREATE TABLE PACIENTES (
-                ID INT IDENTITY(1,1) PRIMARY KEY,
-                CPF NVARCHAR(15) NOT NULL UNIQUE,
-                RG NVARCHAR(15) NOT NULL UNIQUE,
-                SOBRENOME NVARCHAR(60) NOT NULL,
-                NOME NVARCHAR(60) NOT NULL,
-                DATA_NASCIMENTO DATE NOT NULL,
-                TELEFONE_CELULAR NVARCHAR(25) NOT NULL,
-                EMAIL NVARCHAR(100) NOT NULL,
-                ENDERECO NVARCHAR(120) NOT NULL,
-                CIDADE NVARCHAR(60) NOT NULL,
-                ESTADO NVARCHAR(10) NOT NULL,
-                CEP NVARCHAR(10) NOT NULL,
-                CONVENIO NVARCHAR(60) NOT NULL,
-                NUMERO_CARTEIRINHA NVARCHAR(30) NOT NULL,
-                DIAGNOSTICO NVARCHAR(150) NOT NULL,
-                PRONTUARIO NVARCHAR(MAX) NOT NULL,
-                MEDICO_ID INT NULL,
-                DATA_INTERNACAO DATE NOT NULL DEFAULT GETDATE()
-            );
-
-            IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('PACIENTES') AND name = 'BAIRRO')
-            BEGIN
-                ALTER TABLE PACIENTES DROP COLUMN BAIRRO;
-            END;
-
-            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('PACIENTES') AND name = 'CEP')
-            BEGIN
-                ALTER TABLE PACIENTES ADD CEP NVARCHAR(10) NULL;
-                EXEC('UPDATE PACIENTES SET CEP = CASE ESTADO
-                    WHEN ''SP'' THEN ''01310-100''
-                    WHEN ''RJ'' THEN ''20040-002''
-                    WHEN ''MG'' THEN ''30130-100''
-                    WHEN ''PR'' THEN ''80020-010''
-                    ELSE ''01000-000''
-                END WHERE CEP IS NULL;');
-                ALTER TABLE PACIENTES ALTER COLUMN CEP NVARCHAR(10) NOT NULL;
-            END;
-            """)
-            if not connection.get_autocommit():
-                connection.commit()
-
-    def handle(self, *args, **options):
-        self.asegurar_base_dados()
-
-        if options['clean']:
-            self.stdout.write(self.style.WARNING("Limpando e recriando tabelas brasileiras do zero (Reset IDs em 1)..."))
-            self.asegurar_tabelas(drop_first=True)
-        else:
-            self.asegurar_tabelas(drop_first=False)
-
-        with transaction.atomic():
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                IF (SELECT COUNT(*) FROM PACIENTES) > 0 DELETE FROM PACIENTES;
-                IF (SELECT COUNT(*) FROM MEDICOS) > 0 DELETE FROM MEDICOS;
-                IF (SELECT COUNT(*) FROM ESPECIALIDADES) > 0 DELETE FROM ESPECIALIDADES;
-
-                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('PACIENTES')) IS NULL
-                    DBCC CHECKIDENT ('PACIENTES', RESEED, 1);
-                ELSE
-                    DBCC CHECKIDENT ('PACIENTES', RESEED, 0);
-
-                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('MEDICOS')) IS NULL
-                    DBCC CHECKIDENT ('MEDICOS', RESEED, 1);
-                ELSE
-                    DBCC CHECKIDENT ('MEDICOS', RESEED, 0);
-
-                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('ESPECIALIDADES')) IS NULL
-                    DBCC CHECKIDENT ('ESPECIALIDADES', RESEED, 1);
-                ELSE
-                    DBCC CHECKIDENT ('ESPECIALIDADES', RESEED, 0);
-                """)
-
-            from core.models_br import Especialidade, Medico, Paciente
-
-            # 1. Especialidades
-            self.stdout.write("-> Criando catálogo de especialidades médicas (Brasil)...")
-            especialidades_objs = []
-            for esp_nome, esp_desc in ESPECIALIDADES_BRASIL:
-                obj, _ = Especialidade.objects.get_or_create(
-                    nome=esp_nome,
-                    defaults={'descricao': esp_desc}
-                )
-                especialidades_objs.append(obj)
-
-            cant_medicos = options['medicos']
-            cant_pacientes = options['pacientes']
-
-            # 2. Médicos
-            self.stdout.write(f"-> Gerando {cant_medicos} médicos brasileiros com CRM e CPF...")
-            medicos_creados = []
-            used_med_names = set()
-            for i in range(cant_medicos):
-                genero = 'M' if random.random() > 0.5 else 'F'
-                for _ in range(50):
-                    nome = random.choice(NOMBRES_MASCULINOS if genero == 'M' else NOMBRES_FEMENINOS)
-                    sobrenome = random.choice(SOBRENOMES)
-                    if (nome, sobrenome) not in used_med_names:
-                        used_med_names.add((nome, sobrenome))
-                        break
-
-                cpf = calcular_cpf_valido()
-                estado_crm = random.choice(['SP', 'RJ', 'MG', 'PR', 'RS'])
-                rg = gerar_rg_brasileiro(estado_crm)
-                crm = str(random.randint(110000, 499999))
-                esp = especialidades_objs[i % len(especialidades_objs)]
-                telefone = f"+55 {random.choice([11, 21, 31, 41])} 9{random.randint(7000, 9999)}-{random.randint(1000, 9999)}"
-                email = f"{nome.lower().replace(' ', '')}.{sobrenome.lower().replace(' ', '')}@hospitalmetropolitano.com.br"
-
-                medico = Medico.objects.create(
-                    crm=crm,
-                    estado_crm=estado_crm,
-                    cpf=cpf,
-                    rg=rg,
-                    sobrenome=sobrenome,
-                    nome=nome,
-                    especialidade=esp,
-                    telefone_celular=telefone,
-                    email=email
-                )
-                medicos_creados.append(medico)
-
-            # 3. Pacientes
-            self.stdout.write(f"-> Gerando {cant_pacientes} pacientes brasileiros com prontuários e LGPD...")
-            hoy = date.today()
-            used_pat_names = set(used_med_names)
-
-            for j in range(cant_pacientes):
-                genero = 'M' if random.random() > 0.5 else 'F'
-                for _ in range(50):
-                    nome = random.choice(NOMBRES_MASCULINOS if genero == 'M' else NOMBRES_FEMENINOS)
-                    sobrenome = random.choice(SOBRENOMES)
-                    if (nome, sobrenome) not in used_pat_names:
-                        used_pat_names.add((nome, sobrenome))
-                        break
-
-                cpf = calcular_cpf_valido()
-                logradouro, cidade, estado, cep = random.choice(LOGRADOUROS_BRASIL)
-                rg = gerar_rg_brasileiro(estado)
-                numero_casa = random.randint(10, 3500)
-                comp = f", Apto {random.randint(11, 142)}" if random.random() > 0.4 else ""
-                endereco = f"{logradouro}, {numero_casa}{comp}"
-
-                dias_vida = random.randint(18 * 365, 80 * 365)
-                data_nasc = hoy - timedelta(days=dias_vida)
-
-                convenio = random.choice(CONVENIOS_BRASIL)
-                carteirinha = f"{random.randint(100000000, 999999999)}-{random.randint(0, 9)}"
-
-                # Seleção de médico e diagnóstico
-                medico_asignado = None
-                if medicos_creados:
-                    if genero == 'M':
-                        candidatos = [m for m in medicos_creados if m.especialidade.nome != 'Ginecologia e Obstetrícia']
-                    else:
-                        candidatos = medicos_creados
-                    medico_asignado = random.choice(candidatos if candidatos else medicos_creados)
-
-                if medico_asignado and medico_asignado.especialidade:
-                    posibles_diag = DIAGNOSTICOS_POR_ESPECIALIDADE.get(
-                        medico_asignado.especialidade.nome,
-                        [("Consulta de rotina", "Avaliação clínica preventiva periódica.")]
-                    )
-                    if medico_asignado.especialidade.nome == 'Urologia' and genero == 'F':
-                        posibles_diag = [d for d in posibles_diag if "prostática" not in d[0].lower()]
-                    diag_titulo, diag_historia = random.choice(posibles_diag)
-                else:
-                    diag_titulo, diag_historia = ("Consulta de rotina", "Avaliação clínica preventiva periódica.")
-
-                telefone = f"+55 {random.choice([11, 21, 31, 41])} 9{random.randint(7000, 9999)}-{random.randint(1000, 9999)}"
-                email = f"{nome.lower().replace(' ', '')}.{sobrenome.lower().replace(' ', '')}{random.randint(10, 99)}@gmail.com"
-
-                Paciente.objects.create(
-                    cpf=cpf,
-                    rg=rg,
-                    sobrenome=sobrenome,
-                    nome=nome,
-                    data_nascimento=data_nasc,
-                    telefone_celular=telefone,
-                    email=email,
-                    endereco=endereco,
-                    cidade=cidade,
-                    estado=estado,
-                    cep=cep,
-                    convenio=convenio,
-                    numero_carteirinha=carteirinha,
-                    diagnostico=diag_titulo,
-                    prontuario=diag_historia,
-                    medico_responsavel=medico_asignado
-                )
-
-        self.stdout.write(self.style.SUCCESS(
-            f"¡Sucesso! Criadas {len(especialidades_objs)} especialidades, {cant_medicos} médicos com CRM e {cant_pacientes} pacientes com CPFs sintéticos (Módulo 11)."
-        ))
+        return (
+            f"Sucesso! Criadas {len(especialidades_objs)} especialidades, {cant_medicos} médicos com CRM "
+            f"e {cant_pacientes} pacientes com CPFs sintéticos (Módulo 11)."
+        )

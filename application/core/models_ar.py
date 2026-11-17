@@ -6,10 +6,10 @@ class Especialidad(models.Model):
     Catálogo dinámico de especialidades médicas (evita valores hardcodeados).
     Tabla: ESPECIALIDADES
     """
-    nombre = models.CharField(
+    especialidad = models.CharField(
         max_length=60,
         unique=True,
-        db_column='NOMBRE',
+        db_column='ESPECIALIDAD',
         verbose_name="Nombre de la Especialidad"
     )
     descripcion = models.CharField(
@@ -25,10 +25,10 @@ class Especialidad(models.Model):
         managed = False
         verbose_name = 'Especialidad Médica'
         verbose_name_plural = 'Especialidades Médicas'
-        ordering = ['nombre']
+        ordering = ['especialidad']
 
     def __str__(self):
-        return self.nombre
+        return self.especialidad
 
 
 class Medico(models.Model):
@@ -74,6 +74,12 @@ class Medico(models.Model):
     especialidad = models.ForeignKey(
         Especialidad,
         on_delete=models.PROTECT,
+        # Las tablas no tienen FOREIGN KEY en la base (ver seeders).
+        db_constraint=False,
+        # La columna es NOT NULL en la base. null=True solo hace que el ORM use
+        # LEFT JOIN: como no hay FOREIGN KEY, un médico cuya especialidad no existe
+        # se muestra "sin especialidad" en lugar de desaparecer de los listados.
+        null=True,
         db_column='ESPECIALIDAD_ID',
         related_name='medicos',
         verbose_name="Especialidad"
@@ -97,7 +103,7 @@ class Medico(models.Model):
         ordering = ['apellido', 'nombre']
 
     def __str__(self):
-        esp_nombre = self.especialidad.nombre if self.especialidad else "Sin especialidad"
+        esp_nombre = str(self.especialidad) if self.especialidad else "Sin especialidad"
         return f"Dr/a. {self.nombre} {self.apellido} ({esp_nombre}) - MN: {self.matricula_nacional}"
 
     @property
@@ -250,6 +256,8 @@ class Paciente(models.Model):
     medico_asignado = models.ForeignKey(
         Medico,
         on_delete=models.SET_NULL,
+        # Las tablas no tienen FOREIGN KEY en la base (ver seeders).
+        db_constraint=False,
         null=True,
         blank=True,
         db_column='MEDICO_ID',

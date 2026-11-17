@@ -1,4 +1,4 @@
-FROM python:3.11-bookworm as builder
+FROM python:3.11-bookworm AS builder
 
 # Instalar repositorio oficial de Microsoft ODBC Driver 18
 RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
@@ -33,11 +33,18 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app .
 
-# Colectar estáticos
-RUN python manage.py collectstatic --noinput
+# Colectar estáticos (sin base de datos: HMS_ALLOW_SQLITE solo vale para este paso)
+RUN HMS_ALLOW_SQLITE=1 python manage.py collectstatic --noinput
+
+# Commit del repo con el que se construyó la imagen (lo pasa hms-ctl.py build).
+# Se ve en el pie de la app, en /api/health/ y en hms-ctl.py status.
+ARG HMS_BUILD=unknown
+ENV HMS_BUILD=${HMS_BUILD}
+LABEL org.hms3.build=${HMS_BUILD}
 
 RUN chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "0", "hms_project.wsgi:application"]
+# --timeout 60: un worker colgado (por ejemplo, base que no responde) se recicla solo.
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "60", "hms_project.wsgi:application"]

@@ -1,11 +1,8 @@
 import random
 from datetime import date, timedelta
-import pyodbc
-from django.conf import settings
-from django.core.management.base import BaseCommand
-from django.db import connection, transaction
-from core.models import Especialidad, Medico, Paciente
-from core.synthetic_identifiers import generate_ar_cuil as calcular_cuil, generate_ar_dni
+
+from core.management.seed_base import BaseSeedCommand, email_slug
+from core.synthetic_identifiers import generate_ar_cuil as calcular_cuil
 
 NOMBRES_MASCULINOS = [
     "Mateo", "Bautista", "Juan", "Felipe", "Bruno", "Santiago", "Joaquín", "Lucas", 
@@ -138,299 +135,159 @@ LOCALIDADES = [
 ]
 
 
-class Command(BaseCommand):
+class Command(BaseSeedCommand):
     help = 'Genera pacientes, médicos y catálogo dinámico de especialidades argentinas para Delphix Continuous Compliance.'
+    country = 'AR'
 
-    def add_arguments(self, parser):
-        parser.add_argument('--pacientes', type=int, default=40, help='Cantidad de pacientes a generar')
-        parser.add_argument('--medicos', type=int, default=10, help='Cantidad de médicos a generar')
-        parser.add_argument('--clean', action='store_true', help='Elimina los registros existentes antes de poblar')
+    # Sin FOREIGN KEY a propósito: permite el TRUNCATE del masking on-the-fly.
+    ddl = """
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ESPECIALIDADES')
+        CREATE TABLE ESPECIALIDADES (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            ESPECIALIDAD NVARCHAR(60) NOT NULL UNIQUE,
+            DESCRIPCION NVARCHAR(255) NULL
+        );
 
-    def asegurar_base_datos(self):
-        """Crea la base de datos en SQL Server si aún no existe (Día 0)."""
-        db_conf = settings.DATABASES.get('default', {})
-        engine = db_conf.get('ENGINE', '')
-        if 'mssql' not in engine:
-            return
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'MEDICOS')
+        CREATE TABLE MEDICOS (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            MATRICULA_NACIONAL NVARCHAR(20) NOT NULL UNIQUE,
+            MATRICULA_PROVINCIAL NVARCHAR(20) NULL,
+            DNI NVARCHAR(12) NOT NULL UNIQUE,
+            CUIL NVARCHAR(15) NOT NULL UNIQUE,
+            APELLIDO NVARCHAR(60) NOT NULL,
+            NOMBRE NVARCHAR(60) NOT NULL,
+            ESPECIALIDAD_ID INT NOT NULL,
+            TELEFONO_CELULAR NVARCHAR(25) NOT NULL,
+            EMAIL NVARCHAR(100) NOT NULL
+        );
 
-        target_db = db_conf.get('NAME')
-        if not target_db:
-            return
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'PACIENTES')
+        CREATE TABLE PACIENTES (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            DNI NVARCHAR(12) NOT NULL UNIQUE,
+            CUIL NVARCHAR(15) NOT NULL UNIQUE,
+            APELLIDO NVARCHAR(60) NOT NULL,
+            NOMBRE NVARCHAR(60) NOT NULL,
+            FECHA_NACIMIENTO DATE NOT NULL,
+            TELEFONO_CELULAR NVARCHAR(25) NOT NULL,
+            EMAIL NVARCHAR(100) NOT NULL,
+            DIRECCION NVARCHAR(120) NOT NULL,
+            LOCALIDAD NVARCHAR(60) NOT NULL,
+            PROVINCIA NVARCHAR(60) NOT NULL,
+            CODIGO_POSTAL NVARCHAR(10) NOT NULL,
+            OBRA_SOCIAL NVARCHAR(60) NOT NULL,
+            NUMERO_AFILIADO NVARCHAR(30) NOT NULL,
+            DIAGNOSTICO_CLINICO NVARCHAR(150) NOT NULL,
+            HISTORIA_CLINICA NVARCHAR(MAX) NOT NULL,
+            MEDICO_ID INT NULL,
+            FECHA_INGRESO DATE NOT NULL DEFAULT GETDATE()
+        );
+    """
 
-        host = db_conf.get('HOST')
-        port = db_conf.get('PORT', '1433')
-        user = db_conf.get('USER', 'sa')
-        password = db_conf.get('PASSWORD', '')
-        driver = db_conf.get('OPTIONS', {}).get('driver', 'ODBC Driver 18 for SQL Server')
-        extra = db_conf.get('OPTIONS', {}).get('extra_params', 'TrustServerCertificate=yes;')
+    def get_models(self):
+        from core.models_ar import Especialidad, Medico, Paciente
+        return (Especialidad, Medico, Paciente)
 
-        conn_str = f"DRIVER={{{driver}}};SERVER={host},{port};DATABASE=master;UID={user};PWD={password};{extra}"
-        try:
-            conn = pyodbc.connect(conn_str, autocommit=True, timeout=10)
-            cursor = conn.cursor()
-            cursor.execute("SELECT database_id FROM sys.databases WHERE name = ?", (target_db,))
-            row = cursor.fetchone()
-            if not row:
-                self.stdout.write(self.style.WARNING(f"-> Base de datos '{target_db}' no existe. Creándola en SQL Server..."))
-                safe_db_name = target_db.replace("]", "]]")
-                cursor.execute(f"CREATE DATABASE [{safe_db_name}];")
-                self.stdout.write(self.style.SUCCESS(f"-> ¡Base de datos '{target_db}' creada exitosamente!"))
+    def populate(self, cant_medicos, cant_pacientes):
+        Especialidad, Medico, Paciente = self.get_models()
+
+        # 1. Crear catálogo dinámico de especialidades
+        self.stdout.write("-> Creando catálogo de especialidades médicas...")
+        especialidades_objs = [
+            Especialidad.objects.create(especialidad=esp_nombre, descripcion=esp_desc)
+            for esp_nombre, esp_desc in ESPECIALIDADES_ARGENTINA
+        ]
+
+        self.stdout.write(f"-> Generando {cant_medicos} médicos argentinos...")
+        medicos_creados = []
+        dni_base_medicos = random.randint(22000000, 32000000)
+        used_names = set()
+        used_matriculas = set()
+
+        for i in range(cant_medicos):
+            genero, nombre, apellido = self.pick_person(NOMBRES_MASCULINOS, NOMBRES_FEMENINOS, APELLIDOS, used_names)
+
+            dni = str(dni_base_medicos + i * 137)
+            cuil = calcular_cuil(dni, genero)
+            mn = self.unique(lambda: str(random.randint(90000, 160000)), used_matriculas)
+            mp = str(random.randint(40000, 80000))
+            esp_seleccionada = especialidades_objs[i % len(especialidades_objs)]
+            telefono = f"+54 9 11 {random.randint(4000, 6999)}-{random.randint(1000, 9999)}"
+            email = f"{email_slug(nombre)}.{email_slug(apellido)}@sanatoriometropolitano.com.ar"
+
+            medico = Medico.objects.create(
+                matricula_nacional=mn,
+                matricula_provincial=mp,
+                dni=dni,
+                cuil=cuil,
+                apellido=apellido,
+                nombre=nombre,
+                especialidad=esp_seleccionada,
+                telefono_celular=telefono,
+                email=email
+            )
+            medicos_creados.append(medico)
+
+        self.stdout.write(f"-> Generando {cant_pacientes} pacientes argentinos...")
+        dni_base_pacientes = random.randint(33000000, 44000000)
+        hoy = date.today()
+
+        for j in range(cant_pacientes):
+            genero, nombre, apellido = self.pick_person(NOMBRES_MASCULINOS, NOMBRES_FEMENINOS, APELLIDOS, used_names)
+
+            dni = str(dni_base_pacientes + j * 97)
+            cuil = calcular_cuil(dni, genero)
+
+            edad_dias = random.randint(18 * 365, 80 * 365)
+            fecha_nac = hoy - timedelta(days=edad_dias)
+
+            calle = random.choice(CALLES)
+            altura = random.randint(100, 7500)
+            piso = f", {random.randint(1, 14)}° {random.choice(['A', 'B', 'C', 'D'])}" if random.random() > 0.4 else ""
+            direccion = f"{calle} {altura}{piso}"
+            localidad, provincia, cp = random.choice(LOCALIDADES)
+
+            obra = random.choice(OBRAS_SOCIALES)
+            afiliado = f"{random.randint(10000000, 99999999)}/{random.randint(1, 4)}"
+
+            if genero == 'M':
+                candidatos = [m for m in medicos_creados if m.especialidad.especialidad != 'Ginecología y Obstetricia']
             else:
-                self.stdout.write(f"-> Base de datos '{target_db}' verificada en SQL Server.")
-            conn.close()
-            connection.close()
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Error al verificar/crear la base de datos '{target_db}': {e}"))
-            raise
+                candidatos = medicos_creados
+            medico_asignado = random.choice(candidatos if candidatos else medicos_creados)
 
-    def asegurar_tablas(self, drop_first=False):
-        """Crea las tablas argentinas en SQL Server si aún no existen, o las recria si drop_first=True."""
-        with connection.cursor() as cursor:
-            cursor.execute("""
-            SELECT COUNT(*) FROM sys.tables WHERE name = 'PACIENTES';
-            """)
-            has_pacientes = cursor.fetchone()[0] > 0
-            if has_pacientes and not drop_first:
-                cursor.execute("""
-                SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('PACIENTES') AND name = 'DNI';
-                """)
-                if cursor.fetchone()[0] == 0:
-                    self.stdout.write(self.style.WARNING("-> Detectado schema anterior incompatible en PACIENTES. Recreando tablas..."))
-                    drop_first = True
+            posibles_diag = DIAGNOSTICOS_POR_ESPECIALIDAD.get(
+                medico_asignado.especialidad.especialidad,
+                [("Control clínico general", "Evaluación preventiva integral de rutina.")]
+            )
+            if medico_asignado.especialidad.especialidad == 'Urología' and genero == 'F':
+                posibles_diag = [d for d in posibles_diag if "prostática" not in d[0].lower()]
+            diag_titulo, diag_historia = random.choice(posibles_diag)
 
-            if drop_first:
-                self.stdout.write(self.style.WARNING("-> Eliminando tablas anteriores para recreación limpia..."))
-                cursor.execute("""
-                IF OBJECT_ID('dbo.PACIENTES', 'U') IS NOT NULL DROP TABLE dbo.PACIENTES;
-                IF OBJECT_ID('dbo.MEDICOS', 'U') IS NOT NULL DROP TABLE dbo.MEDICOS;
-                IF OBJECT_ID('dbo.ESPECIALIDADES', 'U') IS NOT NULL DROP TABLE dbo.ESPECIALIDADES;
-                IF OBJECT_ID('dbo.PATIENTS', 'U') IS NOT NULL DROP TABLE dbo.PATIENTS;
-                IF OBJECT_ID('dbo.DOCTORS', 'U') IS NOT NULL DROP TABLE dbo.DOCTORS;
-                IF OBJECT_ID('dbo.SPECIALTIES', 'U') IS NOT NULL DROP TABLE dbo.SPECIALTIES;
-                """)
+            telefono = f"+54 9 11 {random.randint(2000, 3999)}-{random.randint(1000, 9999)}"
+            email = f"{email_slug(nombre)}.{email_slug(apellido)}{random.randint(10, 99)}@gmail.com"
 
-            cursor.execute("""
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ESPECIALIDADES')
-            CREATE TABLE ESPECIALIDADES (
-                ID INT IDENTITY(1,1) PRIMARY KEY,
-                NOMBRE NVARCHAR(60) NOT NULL UNIQUE,
-                DESCRIPCION NVARCHAR(255) NULL
-            );
-            
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'MEDICOS')
-            CREATE TABLE MEDICOS (
-                ID INT IDENTITY(1,1) PRIMARY KEY,
-                MATRICULA_NACIONAL NVARCHAR(20) NOT NULL UNIQUE,
-                MATRICULA_PROVINCIAL NVARCHAR(20) NULL,
-                DNI NVARCHAR(12) NOT NULL UNIQUE,
-                CUIL NVARCHAR(15) NOT NULL UNIQUE,
-                APELLIDO NVARCHAR(60) NOT NULL,
-                NOMBRE NVARCHAR(60) NOT NULL,
-                ESPECIALIDAD_ID INT NOT NULL,
-                TELEFONO_CELULAR NVARCHAR(25) NOT NULL,
-                EMAIL NVARCHAR(100) NOT NULL
-            );
+            Paciente.objects.create(
+                dni=dni,
+                cuil=cuil,
+                apellido=apellido,
+                nombre=nombre,
+                fecha_nacimiento=fecha_nac,
+                telefono_celular=telefono,
+                email=email,
+                direccion=direccion,
+                localidad=localidad,
+                provincia=provincia,
+                codigo_postal=cp,
+                obra_social=obra,
+                numero_afiliado=afiliado,
+                diagnostico_clinico=diag_titulo,
+                historia_clinica=diag_historia,
+                medico_asignado=medico_asignado
+            )
 
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'PACIENTES')
-            CREATE TABLE PACIENTES (
-                ID INT IDENTITY(1,1) PRIMARY KEY,
-                DNI NVARCHAR(12) NOT NULL UNIQUE,
-                CUIL NVARCHAR(15) NOT NULL UNIQUE,
-                APELLIDO NVARCHAR(60) NOT NULL,
-                NOMBRE NVARCHAR(60) NOT NULL,
-                FECHA_NACIMIENTO DATE NOT NULL,
-                TELEFONO_CELULAR NVARCHAR(25) NOT NULL,
-                EMAIL NVARCHAR(100) NOT NULL,
-                DIRECCION NVARCHAR(120) NOT NULL,
-                LOCALIDAD NVARCHAR(60) NOT NULL,
-                PROVINCIA NVARCHAR(60) NOT NULL,
-                CODIGO_POSTAL NVARCHAR(10) NOT NULL,
-                OBRA_SOCIAL NVARCHAR(60) NOT NULL,
-                NUMERO_AFILIADO NVARCHAR(30) NOT NULL,
-                DIAGNOSTICO_CLINICO NVARCHAR(150) NOT NULL,
-                HISTORIA_CLINICA NVARCHAR(MAX) NOT NULL,
-                MEDICO_ID INT NULL,
-                FECHA_INGRESO DATE NOT NULL DEFAULT GETDATE()
-            );
-
-            IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('PACIENTES') AND name = 'DIAGNOSTICO_CLINICO' AND max_length > 300)
-            BEGIN
-                ALTER TABLE PACIENTES ALTER COLUMN DIAGNOSTICO_CLINICO NVARCHAR(150) NOT NULL;
-            END;
-
-            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('PACIENTES') AND name = 'CODIGO_POSTAL')
-            BEGIN
-                ALTER TABLE PACIENTES ADD CODIGO_POSTAL NVARCHAR(10) NULL;
-                EXEC('UPDATE PACIENTES SET CODIGO_POSTAL = CASE LOCALIDAD
-                    WHEN ''CABA'' THEN ''C1002''
-                    WHEN ''Vicente López'' THEN ''B1638''
-                    WHEN ''San Isidro'' THEN ''B1642''
-                    WHEN ''Quilmes'' THEN ''B1878''
-                    WHEN ''Ramos Mejía'' THEN ''B1704''
-                    WHEN ''Morón'' THEN ''B1708''
-                    WHEN ''La Plata'' THEN ''B1900''
-                    WHEN ''Córdoba Capital'' THEN ''X5000''
-                    WHEN ''Rosario'' THEN ''S2000''
-                    ELSE ''C1000''
-                END WHERE CODIGO_POSTAL IS NULL;');
-                ALTER TABLE PACIENTES ALTER COLUMN CODIGO_POSTAL NVARCHAR(10) NOT NULL;
-            END;
-            """)
-            if not connection.get_autocommit():
-                connection.commit()
-
-    def handle(self, *args, **options):
-        self.asegurar_base_datos()
-
-        if options['clean']:
-            self.stdout.write(self.style.WARNING("Eliminando y recreando tablas argentinas desde cero (Reset IDs en 1)..."))
-            self.asegurar_tablas(drop_first=True)
-        else:
-            self.asegurar_tablas(drop_first=False)
-
-        with transaction.atomic():
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                IF (SELECT COUNT(*) FROM PACIENTES) > 0 DELETE FROM PACIENTES;
-                IF (SELECT COUNT(*) FROM MEDICOS) > 0 DELETE FROM MEDICOS;
-                IF (SELECT COUNT(*) FROM ESPECIALIDADES) > 0 DELETE FROM ESPECIALIDADES;
-
-                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('PACIENTES')) IS NULL
-                    DBCC CHECKIDENT ('PACIENTES', RESEED, 1);
-                ELSE
-                    DBCC CHECKIDENT ('PACIENTES', RESEED, 0);
-
-                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('MEDICOS')) IS NULL
-                    DBCC CHECKIDENT ('MEDICOS', RESEED, 1);
-                ELSE
-                    DBCC CHECKIDENT ('MEDICOS', RESEED, 0);
-
-                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('ESPECIALIDADES')) IS NULL
-                    DBCC CHECKIDENT ('ESPECIALIDADES', RESEED, 1);
-                ELSE
-                    DBCC CHECKIDENT ('ESPECIALIDADES', RESEED, 0);
-                """)
-
-            from core.models_ar import Especialidad, Medico, Paciente
-
-            # 1. Crear catálogo dinámico de especialidades
-            self.stdout.write("-> Creando catálogo de especialidades médicas...")
-            especialidades_objs = []
-            for esp_nombre, esp_desc in ESPECIALIDADES_ARGENTINA:
-                obj, _ = Especialidad.objects.get_or_create(
-                    nombre=esp_nombre,
-                    defaults={'descripcion': esp_desc}
-                )
-                especialidades_objs.append(obj)
-
-            cant_medicos = options['medicos']
-            cant_pacientes = options['pacientes']
-
-            self.stdout.write(f"-> Generando {cant_medicos} médicos argentinos...")
-            medicos_creados = []
-            dni_base_medicos = random.randint(22000000, 32000000)
-            used_med_names = set()
-
-            for i in range(cant_medicos):
-                genero = 'M' if random.random() > 0.5 else 'F'
-                for _ in range(50):
-                    nombre = random.choice(NOMBRES_MASCULINOS if genero == 'M' else NOMBRES_FEMENINOS)
-                    apellido = random.choice(APELLIDOS)
-                    if (nombre, apellido) not in used_med_names:
-                        used_med_names.add((nombre, apellido))
-                        break
-
-                dni = str(dni_base_medicos + i * 137)
-                cuil = calcular_cuil(dni, genero)
-                mn = str(random.randint(90000, 160000))
-                mp = str(random.randint(40000, 80000))
-                esp_seleccionada = especialidades_objs[i % len(especialidades_objs)]
-                telefono = f"+54 9 11 {random.randint(4000, 6999)}-{random.randint(1000, 9999)}"
-                email = f"{nombre.lower().replace(' ', '')}.{apellido.lower()}@sanatoriometropolitano.com.ar"
-
-                medico = Medico.objects.create(
-                    matricula_nacional=mn,
-                    matricula_provincial=mp,
-                    dni=dni,
-                    cuil=cuil,
-                    apellido=apellido,
-                    nombre=nombre,
-                    especialidad=esp_seleccionada,
-                    telefono_celular=telefono,
-                    email=email
-                )
-                medicos_creados.append(medico)
-
-            self.stdout.write(f"-> Generando {cant_pacientes} pacientes argentinos...")
-            dni_base_pacientes = random.randint(33000000, 44000000)
-            hoy = date.today()
-            used_pat_names = set(used_med_names)
-
-            for j in range(cant_pacientes):
-                genero = 'M' if random.random() > 0.5 else 'F'
-                for _ in range(50):
-                    nombre = random.choice(NOMBRES_MASCULINOS if genero == 'M' else NOMBRES_FEMENINOS)
-                    apellido = random.choice(APELLIDOS)
-                    if (nombre, apellido) not in used_pat_names:
-                        used_pat_names.add((nombre, apellido))
-                        break
-
-                dni = str(dni_base_pacientes + j * 97)
-                cuil = calcular_cuil(dni, genero)
-
-                edad_dias = random.randint(18 * 365, 80 * 365)
-                fecha_nac = hoy - timedelta(days=edad_dias)
-
-                calle = random.choice(CALLES)
-                altura = random.randint(100, 7500)
-                piso = f", {random.randint(1, 14)}° {random.choice(['A', 'B', 'C', 'D'])}" if random.random() > 0.4 else ""
-                direccion = f"{calle} {altura}{piso}"
-                localidad, provincia, cp = random.choice(LOCALIDADES)
-
-                obra = random.choice(OBRAS_SOCIALES)
-                afiliado = f"{random.randint(10000000, 99999999)}/{random.randint(1, 4)}"
-                
-                medico_asignado = None
-                if medicos_creados:
-                    if genero == 'M':
-                        candidatos = [m for m in medicos_creados if m.especialidad.nombre != 'Ginecología y Obstetricia']
-                    else:
-                        candidatos = medicos_creados
-                    medico_asignado = random.choice(candidatos if candidatos else medicos_creados)
-
-                if medico_asignado and medico_asignado.especialidad:
-                    posibles_diag = DIAGNOSTICOS_POR_ESPECIALIDAD.get(
-                        medico_asignado.especialidad.nombre,
-                        [("Control clínico general", "Evaluación preventiva integral de rutina.")]
-                    )
-                    if medico_asignado.especialidad.nombre == 'Urología' and genero == 'F':
-                        posibles_diag = [d for d in posibles_diag if "prostática" not in d[0].lower()]
-                    diag_titulo, diag_historia = random.choice(posibles_diag)
-                else:
-                    diag_titulo, diag_historia = ("Control clínico general", "Evaluación preventiva integral de rutina.")
-
-                telefono = f"+54 9 11 {random.randint(2000, 3999)}-{random.randint(1000, 9999)}"
-                email = f"{nombre.lower().replace(' ', '')}.{apellido.lower()}{random.randint(10, 99)}@gmail.com"
-
-                Paciente.objects.create(
-                    dni=dni,
-                    cuil=cuil,
-                    apellido=apellido,
-                    nombre=nombre,
-                    fecha_nacimiento=fecha_nac,
-                    telefono_celular=telefono,
-                    email=email,
-                    direccion=direccion,
-                    localidad=localidad,
-                    provincia=provincia,
-                    codigo_postal=cp,
-                    obra_social=obra,
-                    numero_afiliado=afiliado,
-                    diagnostico_clinico=diag_titulo,
-                    historia_clinica=diag_historia,
-                    medico_asignado=medico_asignado
-                )
-
-            self.stdout.write(self.style.SUCCESS(
-                f"¡Éxito! Se crearon {len(especialidades_objs)} especialidades en catálogo, {cant_medicos} médicos y {cant_pacientes} pacientes con DNIs y CUILs sintéticos (Módulo 11)."
-            ))
+        return (
+            f"¡Éxito! Se crearon {len(especialidades_objs)} especialidades en catálogo, {cant_medicos} médicos "
+            f"y {cant_pacientes} pacientes con DNIs y CUILs sintéticos (Módulo 11)."
+        )

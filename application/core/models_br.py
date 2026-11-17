@@ -6,10 +6,10 @@ class Especialidade(models.Model):
     Catálogo de especialidades médicas (Brasil).
     Tabela: ESPECIALIDADES
     """
-    nome = models.CharField(
+    especialidade = models.CharField(
         max_length=60,
         unique=True,
-        db_column='NOME',
+        db_column='ESPECIALIDADE',
         verbose_name="Nome da Especialidade"
     )
     descricao = models.CharField(
@@ -25,18 +25,10 @@ class Especialidade(models.Model):
         managed = False
         verbose_name = 'Especialidade Médica'
         verbose_name_plural = 'Especialidades Médicas'
-        ordering = ['nome']
+        ordering = ['especialidade']
 
     def __str__(self):
-        return self.nome
-
-    @property
-    def nombre(self):
-        return self.nome
-
-    @nombre.setter
-    def nombre(self, val):
-        self.nome = val
+        return self.especialidade
 
 
 class Medico(models.Model):
@@ -81,6 +73,12 @@ class Medico(models.Model):
     especialidade = models.ForeignKey(
         Especialidade,
         on_delete=models.PROTECT,
+        # Las tablas no tienen FOREIGN KEY en la base (ver seeders).
+        db_constraint=False,
+        # La columna es NOT NULL en la base. null=True solo hace que el ORM use
+        # LEFT JOIN: como no hay FOREIGN KEY, un médico cuya especialidad no existe
+        # se muestra "sin especialidad" en lugar de desaparecer de los listados.
+        null=True,
         db_column='ESPECIALIDADE_ID',
         related_name='medicos',
         verbose_name="Especialidade"
@@ -104,7 +102,7 @@ class Medico(models.Model):
         ordering = ['sobrenome', 'nome']
 
     def __str__(self):
-        esp_nome = self.especialidade.nome if self.especialidade else "Sem especialidade"
+        esp_nome = str(self.especialidade) if self.especialidade else "Sem especialidade"
         return f"Dr(a). {self.nome} {self.sobrenome} ({esp_nome}) - CRM: {self.crm}/{self.estado_crm}"
 
     @property
@@ -285,6 +283,8 @@ class Paciente(models.Model):
     medico_responsavel = models.ForeignKey(
         Medico,
         on_delete=models.SET_NULL,
+        # Las tablas no tienen FOREIGN KEY en la base (ver seeders).
+        db_constraint=False,
         null=True,
         blank=True,
         db_column='MEDICO_ID',

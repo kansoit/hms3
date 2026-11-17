@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ txt.db_unavailable_title }} - {{ txt.title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm mt-5">
+            <div class="card-body text-center p-5">
+                <i class="fa-solid fa-database text-warning mb-3" style="font-size: 3rem;"></i>
+                <h3 class="fw-bold mb-3">{{ txt.db_unavailable_title }}</h3>
+                <p class="text-muted mb-4">{{ txt.db_unavailable_desc }}</p>
+                <p class="font-monospace small mb-4">
+                    <i class="fa-solid fa-server me-1"></i> {{ DB_HOST }}:{{ DB_PORT }} [{{ DB_NAME }}]
+                </p>
+                <div class="d-flex justify-content-center align-items-center gap-2 text-muted">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    <span>{{ txt.db_unavailable_retry }} <strong id="retry-countdown">5</strong>s</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Reintenta sola: cuando la base vuelve (fin del refresh o rewind), la app reaparece.
+    (function () {
+        let left = 5;
+        const el = document.getElementById('retry-countdown');
+        setInterval(function () {
+            left -= 1;
+            if (left <= 0) {
+                window.location.reload();
+            } else if (el) {
+                el.innerText = left;
+            }
+        }, 1000);
+    })();
+</script>
+{% endblock %}

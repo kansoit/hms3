@@ -4,6 +4,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.django
+      args:
+        HMS_BUILD: ${HMS_BUILD:-unknown}
     container_name: ${HMS_CONTAINER_NAME}
     restart: always
     ports:

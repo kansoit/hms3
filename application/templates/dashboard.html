@@ -240,7 +240,7 @@
                                 <td class="fw-semibold text-nowrap">
                                     {% if HMS_COUNTRY == 'US' %}Dr. {{ m.first_name }} {{ m.last_name }}{% elif HMS_COUNTRY == 'BR' %}Dr(a). {{ m.nome }} {{ m.sobrenome }}{% else %}Dr/a. {{ m.apellido }}, {{ m.nombre }}{% endif %}
                                 </td>
-                                <td><span class="badge bg-success">{{ m.especialidad }}</span></td>
+                                <td>{% if m.especialidad %}<span class="badge bg-success">{{ m.especialidad }}</span>{% else %}<span class="badge bg-warning text-dark">{{ txt.no_specialty }}</span>{% endif %}</td>
                                 <td class="font-monospace text-nowrap">{{ m.telefono_celular }}</td>
                                 <td class="small">{{ m.email }}</td>
                             </tr>
@@ -358,9 +358,9 @@
                         <div class="col-12">
                             <label class="form-label small fw-bold text-muted">{{ txt.field_doctor }}</label>
                             <select class="form-select" name="doctor_id" id="input_medico_id">
-                                <option value="">-- {% if HMS_COUNTRY == 'US' %}No physician assigned{% elif HMS_COUNTRY == 'BR' %}Sem médico atribuído{% else %}Sin médico asignado{% endif %} --</option>
+                                <option value="">-- {{ txt.no_doctor }} --</option>
                                 {% for m in todos_medicos %}
-                                <option value="{{ m.id }}">Dr/a. {{ m.apellido }}, {{ m.nombre }} ({{ m.especialidad.nombre }})</option>
+                                <option value="{{ m.id }}">Dr/a. {{ m.apellido }}, {{ m.nombre }} ({{ m.especialidad|default:txt.no_specialty }})</option>
                                 {% endfor %}
                             </select>
                         </div>

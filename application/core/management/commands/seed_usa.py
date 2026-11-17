@@ -1,9 +1,7 @@
 import random
 from datetime import date, timedelta
-import pyodbc
-from django.conf import settings
-from django.core.management.base import BaseCommand
-from django.db import connection, transaction
+
+from core.management.seed_base import BaseSeedCommand, email_slug
 from core.synthetic_identifiers import generate_us_ssn as generate_valid_ssn, generate_us_npi as generate_valid_npi, generate_us_state_id
 
 FIRST_NAMES_MALE = [
@@ -134,289 +132,160 @@ LOCATIONS_USA = [
 ]
 
 
-class Command(BaseCommand):
+class Command(BaseSeedCommand):
     help = 'Populates the US database with realistic SSNs, NPIs, and clinical history for HIPAA compliance.'
+    country = 'US'
 
-    def add_arguments(self, parser):
-        parser.add_argument('--pacientes', type=int, default=40, help='Number of patients to generate')
-        parser.add_argument('--medicos', type=int, default=10, help='Number of doctors to generate')
-        parser.add_argument('--clean', action='store_true', help='Clean existing records and reseed identities to 0')
+    # No FOREIGN KEY on purpose: allows the TRUNCATE of on-the-fly masking.
+    ddl = """
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SPECIALTIES')
+        CREATE TABLE SPECIALTIES (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            SPECIALTY NVARCHAR(60) NOT NULL UNIQUE,
+            DESCRIPTION NVARCHAR(255) NULL
+        );
 
-    def ensure_database(self):
-        """Creates the database in SQL Server if it does not exist (Day 0)."""
-        db_conf = settings.DATABASES.get('default', {})
-        engine = db_conf.get('ENGINE', '')
-        if 'mssql' not in engine:
-            return
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'DOCTORS')
+        CREATE TABLE DOCTORS (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            NPI NVARCHAR(20) NOT NULL UNIQUE,
+            STATE_LICENSE NVARCHAR(20) NULL,
+            SSN NVARCHAR(15) NOT NULL UNIQUE,
+            STATE_ID NVARCHAR(15) NOT NULL UNIQUE,
+            LAST_NAME NVARCHAR(60) NOT NULL,
+            FIRST_NAME NVARCHAR(60) NOT NULL,
+            SPECIALTY_ID INT NOT NULL,
+            PHONE_NUMBER NVARCHAR(25) NOT NULL,
+            EMAIL NVARCHAR(100) NOT NULL
+        );
 
-        target_db = db_conf.get('NAME')
-        if not target_db:
-            return
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'PATIENTS')
+        CREATE TABLE PATIENTS (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            SSN NVARCHAR(15) NOT NULL UNIQUE,
+            STATE_ID NVARCHAR(15) NOT NULL UNIQUE,
+            LAST_NAME NVARCHAR(60) NOT NULL,
+            FIRST_NAME NVARCHAR(60) NOT NULL,
+            DATE_OF_BIRTH DATE NOT NULL,
+            PHONE_NUMBER NVARCHAR(25) NOT NULL,
+            EMAIL NVARCHAR(100) NOT NULL,
+            ADDRESS NVARCHAR(120) NOT NULL,
+            CITY NVARCHAR(60) NOT NULL,
+            STATE NVARCHAR(10) NOT NULL,
+            ZIP_CODE NVARCHAR(10) NOT NULL,
+            INSURANCE_PROVIDER NVARCHAR(60) NOT NULL,
+            POLICY_NUMBER NVARCHAR(30) NOT NULL,
+            DIAGNOSIS NVARCHAR(150) NOT NULL,
+            CLINICAL_NOTES NVARCHAR(MAX) NOT NULL,
+            DOCTOR_ID INT NULL,
+            ADMISSION_DATE DATE NOT NULL DEFAULT GETDATE()
+        );
+    """
 
-        host = db_conf.get('HOST')
-        port = db_conf.get('PORT', '1433')
-        user = db_conf.get('USER', 'sa')
-        password = db_conf.get('PASSWORD', '')
-        driver = db_conf.get('OPTIONS', {}).get('driver', 'ODBC Driver 18 for SQL Server')
-        extra = db_conf.get('OPTIONS', {}).get('extra_params', 'TrustServerCertificate=yes;')
+    def get_models(self):
+        from core.models_us import Specialty, Doctor, Patient
+        return (Specialty, Doctor, Patient)
 
-        conn_str = f"DRIVER={{{driver}}};SERVER={host},{port};DATABASE=master;UID={user};PWD={password};{extra}"
-        try:
-            conn = pyodbc.connect(conn_str, autocommit=True, timeout=10)
-            cursor = conn.cursor()
-            cursor.execute("SELECT database_id FROM sys.databases WHERE name = ?", (target_db,))
-            row = cursor.fetchone()
-            if not row:
-                self.stdout.write(self.style.WARNING(f"-> Database '{target_db}' not found. Creating in SQL Server..."))
-                safe_db_name = target_db.replace("]", "]]")
-                cursor.execute(f"CREATE DATABASE [{safe_db_name}];")
-                self.stdout.write(self.style.SUCCESS(f"-> Database '{target_db}' created successfully!"))
+    def populate(self, cant_medicos, cant_pacientes):
+        Specialty, Doctor, Patient = self.get_models()
+
+        # 1. Specialties
+        self.stdout.write("-> Creating medical specialties catalog (USA)...")
+        specialties_objs = [
+            Specialty.objects.create(specialty=s_name, description=s_desc)
+            for s_name, s_desc in SPECIALTIES_USA
+        ]
+
+        # 2. Doctors
+        self.stdout.write(f"-> Generating {cant_medicos} US physicians with NPI and State Licenses...")
+        doctors_created = []
+        used_names = set()
+        used_npis, used_ssns, used_state_ids = set(), set(), set()
+
+        for i in range(cant_medicos):
+            gender, first_name, last_name = self.pick_person(FIRST_NAMES_MALE, FIRST_NAMES_FEMALE, LAST_NAMES, used_names)
+
+            npi = self.unique(generate_valid_npi, used_npis)
+            ssn = self.unique(generate_valid_ssn, used_ssns)
+            state_code = random.choice(['NY', 'CA', 'IL', 'TX', 'GA', 'MA'])
+            state_id = self.unique(lambda: f"{state_code}-D{random.randint(1000000, 9999999)}", used_state_ids)
+            state_lic = f"MD-{state_code}-{random.randint(10000, 99999)}"
+            spec = specialties_objs[i % len(specialties_objs)]
+            phone = f"+1 ({random.randint(201, 989)}) {random.randint(200, 999)}-{random.randint(1000, 9999)}"
+            email = f"dr.{email_slug(first_name)}.{email_slug(last_name)}@metropolitanhospital.org"
+
+            doc = Doctor.objects.create(
+                npi=npi,
+                state_license=state_lic,
+                ssn=ssn,
+                state_id=state_id,
+                last_name=last_name,
+                first_name=first_name,
+                specialty=spec,
+                phone_number=phone,
+                email=email
+            )
+            doctors_created.append(doc)
+
+        # 3. Patients
+        self.stdout.write(f"-> Generating {cant_pacientes} US patients with HIPAA-compliant PHI data...")
+        today = date.today()
+        used_ssns, used_state_ids = set(), set()
+
+        for j in range(cant_pacientes):
+            gender, first_name, last_name = self.pick_person(FIRST_NAMES_MALE, FIRST_NAMES_FEMALE, LAST_NAMES, used_names)
+
+            ssn = self.unique(generate_valid_ssn, used_ssns)
+            street, city, state, zip_code = random.choice(LOCATIONS_USA)
+            state_id = self.unique(lambda: generate_us_state_id(state), used_state_ids)
+            street_num = random.randint(10, 9999)
+            apt = f", Apt {random.randint(1, 24)}{random.choice(['A', 'B', 'C', 'D'])}" if random.random() > 0.4 else ""
+            address = f"{street_num} {street}{apt}"
+
+            age_days = random.randint(18 * 365, 80 * 365)
+            dob = today - timedelta(days=age_days)
+
+            insurance = random.choice(INSURANCE_PROVIDERS)
+            policy = f"POL-{random.choice(['A', 'B', 'C', 'X'])}{random.randint(10000000, 99999999)}"
+
+            # Physician & Diagnosis match
+            if gender == 'M':
+                candidates = [d for d in doctors_created if d.specialty.specialty != 'Obstetrics & Gynecology']
             else:
-                self.stdout.write(f"-> Database '{target_db}' verified in SQL Server.")
-            conn.close()
-            connection.close()
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Error checking/creating database '{target_db}': {e}"))
-            raise
+                candidates = doctors_created
+            assigned_doc = random.choice(candidates if candidates else doctors_created)
 
-    def ensure_tables(self, drop_first=False):
-        """Creates US tables in SQL Server if not already present, or recreates if drop_first=True."""
-        with connection.cursor() as cursor:
-            cursor.execute("""
-            SELECT COUNT(*) FROM sys.tables WHERE name = 'PATIENTS';
-            """)
-            has_patients = cursor.fetchone()[0] > 0
-            if has_patients and not drop_first:
-                cursor.execute("""
-                SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('PATIENTS') AND name = 'SSN';
-                """)
-                if cursor.fetchone()[0] == 0:
-                    self.stdout.write(self.style.WARNING("-> Detected incompatible previous schema in PATIENTS. Recreating tables..."))
-                    drop_first = True
+            possible_diags = DIAGNOSES_BY_SPECIALTY.get(
+                assigned_doc.specialty.specialty,
+                [("Routine Clinical Preventive Checkup", "Comprehensive periodic health examination without acute complaints.")]
+            )
+            if assigned_doc.specialty.specialty == 'Urology' and gender == 'F':
+                possible_diags = [d for d in possible_diags if "prostatic" not in d[0].lower()]
+            diag_title, diag_notes = random.choice(possible_diags)
 
-            if drop_first:
-                self.stdout.write(self.style.WARNING("-> Dropping previous tables for clean recreation..."))
-                cursor.execute("""
-                IF OBJECT_ID('dbo.PATIENTS', 'U') IS NOT NULL DROP TABLE dbo.PATIENTS;
-                IF OBJECT_ID('dbo.DOCTORS', 'U') IS NOT NULL DROP TABLE dbo.DOCTORS;
-                IF OBJECT_ID('dbo.SPECIALTIES', 'U') IS NOT NULL DROP TABLE dbo.SPECIALTIES;
-                IF OBJECT_ID('dbo.PACIENTES', 'U') IS NOT NULL DROP TABLE dbo.PACIENTES;
-                IF OBJECT_ID('dbo.MEDICOS', 'U') IS NOT NULL DROP TABLE dbo.MEDICOS;
-                IF OBJECT_ID('dbo.ESPECIALIDADES', 'U') IS NOT NULL DROP TABLE dbo.ESPECIALIDADES;
-                """)
+            phone = f"+1 ({random.randint(201, 989)}) {random.randint(200, 999)}-{random.randint(1000, 9999)}"
+            email = f"{email_slug(first_name)}.{email_slug(last_name)}{random.randint(10, 99)}@gmail.com"
 
-            cursor.execute("""
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SPECIALTIES')
-            CREATE TABLE SPECIALTIES (
-                ID INT IDENTITY(1,1) PRIMARY KEY,
-                NAME NVARCHAR(60) NOT NULL UNIQUE,
-                DESCRIPTION NVARCHAR(255) NULL
-            );
-            
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'DOCTORS')
-            CREATE TABLE DOCTORS (
-                ID INT IDENTITY(1,1) PRIMARY KEY,
-                NPI NVARCHAR(20) NOT NULL UNIQUE,
-                STATE_LICENSE NVARCHAR(20) NULL,
-                SSN NVARCHAR(15) NOT NULL UNIQUE,
-                STATE_ID NVARCHAR(15) NOT NULL UNIQUE,
-                LAST_NAME NVARCHAR(60) NOT NULL,
-                FIRST_NAME NVARCHAR(60) NOT NULL,
-                SPECIALTY_ID INT NOT NULL,
-                PHONE_NUMBER NVARCHAR(25) NOT NULL,
-                EMAIL NVARCHAR(100) NOT NULL
-            );
+            Patient.objects.create(
+                ssn=ssn,
+                state_id=state_id,
+                last_name=last_name,
+                first_name=first_name,
+                date_of_birth=dob,
+                phone_number=phone,
+                email=email,
+                address=address,
+                city=city,
+                state=state,
+                zip_code=zip_code,
+                insurance_provider=insurance,
+                policy_number=policy,
+                diagnosis=diag_title,
+                clinical_notes=diag_notes,
+                assigned_doctor=assigned_doc
+            )
 
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'PATIENTS')
-            CREATE TABLE PATIENTS (
-                ID INT IDENTITY(1,1) PRIMARY KEY,
-                SSN NVARCHAR(15) NOT NULL UNIQUE,
-                STATE_ID NVARCHAR(15) NOT NULL UNIQUE,
-                LAST_NAME NVARCHAR(60) NOT NULL,
-                FIRST_NAME NVARCHAR(60) NOT NULL,
-                DATE_OF_BIRTH DATE NOT NULL,
-                PHONE_NUMBER NVARCHAR(25) NOT NULL,
-                EMAIL NVARCHAR(100) NOT NULL,
-                ADDRESS NVARCHAR(120) NOT NULL,
-                CITY NVARCHAR(60) NOT NULL,
-                STATE NVARCHAR(10) NOT NULL,
-                ZIP_CODE NVARCHAR(10) NOT NULL,
-                INSURANCE_PROVIDER NVARCHAR(60) NOT NULL,
-                POLICY_NUMBER NVARCHAR(30) NOT NULL,
-                DIAGNOSIS NVARCHAR(150) NOT NULL,
-                CLINICAL_NOTES NVARCHAR(MAX) NOT NULL,
-                DOCTOR_ID INT NULL,
-                ADMISSION_DATE DATE NOT NULL DEFAULT GETDATE()
-            );
-
-            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('PATIENTS') AND name = 'ZIP_CODE')
-            BEGIN
-                ALTER TABLE PATIENTS ADD ZIP_CODE NVARCHAR(10) NULL;
-                EXEC('UPDATE PATIENTS SET ZIP_CODE = CASE STATE
-                    WHEN ''NY'' THEN ''10001''
-                    WHEN ''CA'' THEN ''90210''
-                    WHEN ''IL'' THEN ''60601''
-                    WHEN ''TX'' THEN ''77001''
-                    WHEN ''FL'' THEN ''33101''
-                    ELSE ''10001''
-                END WHERE ZIP_CODE IS NULL;');
-                ALTER TABLE PATIENTS ALTER COLUMN ZIP_CODE NVARCHAR(10) NOT NULL;
-            END;
-            """)
-            if not connection.get_autocommit():
-                connection.commit()
-
-    def handle(self, *args, **options):
-        self.ensure_database()
-
-        if options['clean']:
-            self.stdout.write(self.style.WARNING("Cleaning and recreating US tables from scratch (Reset IDs to 1)..."))
-            self.ensure_tables(drop_first=True)
-        else:
-            self.ensure_tables(drop_first=False)
-
-        with transaction.atomic():
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                IF (SELECT COUNT(*) FROM PATIENTS) > 0 DELETE FROM PATIENTS;
-                IF (SELECT COUNT(*) FROM DOCTORS) > 0 DELETE FROM DOCTORS;
-                IF (SELECT COUNT(*) FROM SPECIALTIES) > 0 DELETE FROM SPECIALTIES;
-
-                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('PATIENTS')) IS NULL
-                    DBCC CHECKIDENT ('PATIENTS', RESEED, 1);
-                ELSE
-                    DBCC CHECKIDENT ('PATIENTS', RESEED, 0);
-
-                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('DOCTORS')) IS NULL
-                    DBCC CHECKIDENT ('DOCTORS', RESEED, 1);
-                ELSE
-                    DBCC CHECKIDENT ('DOCTORS', RESEED, 0);
-
-                IF (SELECT last_value FROM sys.identity_columns WHERE object_id = OBJECT_ID('SPECIALTIES')) IS NULL
-                    DBCC CHECKIDENT ('SPECIALTIES', RESEED, 1);
-                ELSE
-                    DBCC CHECKIDENT ('SPECIALTIES', RESEED, 0);
-                """)
-
-            from core.models_us import Specialty, Doctor, Patient
-
-            # 1. Specialties
-            self.stdout.write("-> Creating medical specialties catalog (USA)...")
-            specialties_objs = []
-            for s_name, s_desc in SPECIALTIES_USA:
-                obj, _ = Specialty.objects.get_or_create(
-                    name=s_name,
-                    defaults={'description': s_desc}
-                )
-                specialties_objs.append(obj)
-
-            cant_medicos = options['medicos']
-            cant_pacientes = options['pacientes']
-
-            # 2. Doctors
-            self.stdout.write(f"-> Generating {cant_medicos} US physicians with NPI and State Licenses...")
-            doctors_created = []
-            used_doc_names = set()
-            for i in range(cant_medicos):
-                gender = 'M' if random.random() > 0.5 else 'F'
-                for _ in range(50):
-                    first_name = random.choice(FIRST_NAMES_MALE if gender == 'M' else FIRST_NAMES_FEMALE)
-                    last_name = random.choice(LAST_NAMES)
-                    if (first_name, last_name) not in used_doc_names:
-                        used_doc_names.add((first_name, last_name))
-                        break
-
-                npi = generate_valid_npi()
-                ssn = generate_valid_ssn()
-                state_code = random.choice(['NY', 'CA', 'IL', 'TX', 'GA', 'MA'])
-                state_id = f"{state_code}-D{random.randint(1000000, 9999999)}"
-                state_lic = f"MD-{state_code}-{random.randint(10000, 99999)}"
-                spec = specialties_objs[i % len(specialties_objs)]
-                phone = f"+1 ({random.randint(201, 989)}) {random.randint(200, 999)}-{random.randint(1000, 9999)}"
-                email = f"dr.{first_name.lower().replace(' ', '')}.{last_name.lower().replace(' ', '')}@metropolitanhospital.org"
-
-                doc = Doctor.objects.create(
-                    npi=npi,
-                    state_license=state_lic,
-                    ssn=ssn,
-                    state_id=state_id,
-                    last_name=last_name,
-                    first_name=first_name,
-                    specialty=spec,
-                    phone_number=phone,
-                    email=email
-                )
-                doctors_created.append(doc)
-
-            # 3. Patients
-            self.stdout.write(f"-> Generating {cant_pacientes} US patients with HIPAA-compliant PHI data...")
-            today = date.today()
-            used_pat_names = set(used_doc_names)
-
-            for j in range(cant_pacientes):
-                gender = 'M' if random.random() > 0.5 else 'F'
-                for _ in range(50):
-                    first_name = random.choice(FIRST_NAMES_MALE if gender == 'M' else FIRST_NAMES_FEMALE)
-                    last_name = random.choice(LAST_NAMES)
-                    if (first_name, last_name) not in used_pat_names:
-                        used_pat_names.add((first_name, last_name))
-                        break
-
-                ssn = generate_valid_ssn()
-                street, city, state, zip_code = random.choice(LOCATIONS_USA)
-                state_id = generate_us_state_id(state)
-                street_num = random.randint(10, 9999)
-                apt = f", Apt {random.randint(1, 24)}{random.choice(['A', 'B', 'C', 'D'])}" if random.random() > 0.4 else ""
-                address = f"{street_num} {street}{apt}"
-
-                age_days = random.randint(18 * 365, 80 * 365)
-                dob = today - timedelta(days=age_days)
-
-                insurance = random.choice(INSURANCE_PROVIDERS)
-                policy = f"POL-{random.choice(['A', 'B', 'C', 'X'])}{random.randint(10000000, 99999999)}"
-
-                # Physician & Diagnosis match
-                assigned_doc = None
-                if doctors_created:
-                    if gender == 'M':
-                        candidates = [d for d in doctors_created if d.specialty.name != 'Obstetrics & Gynecology']
-                    else:
-                        candidates = doctors_created
-                    assigned_doc = random.choice(candidates if candidates else doctors_created)
-
-                if assigned_doc and assigned_doc.specialty:
-                    possible_diags = DIAGNOSES_BY_SPECIALTY.get(
-                        assigned_doc.specialty.name,
-                        [("Routine Clinical Preventive Checkup", "Comprehensive periodic health examination without acute complaints.")]
-                    )
-                    if assigned_doc.specialty.name == 'Urology' and gender == 'F':
-                        possible_diags = [d for d in possible_diags if "prostatic" not in d[0].lower()]
-                    diag_title, diag_notes = random.choice(possible_diags)
-                else:
-                    diag_title, diag_notes = ("Routine Clinical Preventive Checkup", "Comprehensive periodic health examination without acute complaints.")
-
-                phone = f"+1 ({random.randint(201, 989)}) {random.randint(200, 999)}-{random.randint(1000, 9999)}"
-                email = f"{first_name.lower().replace(' ', '')}.{last_name.lower().replace(' ', '')}{random.randint(10, 99)}@gmail.com"
-
-                Patient.objects.create(
-                    ssn=ssn,
-                    state_id=state_id,
-                    last_name=last_name,
-                    first_name=first_name,
-                    date_of_birth=dob,
-                    phone_number=phone,
-                    email=email,
-                    address=address,
-                    city=city,
-                    state=state,
-                    zip_code=zip_code,
-                    insurance_provider=insurance,
-                    policy_number=policy,
-                    diagnosis=diag_title,
-                    clinical_notes=diag_notes,
-                    assigned_doctor=assigned_doc
-                )
-
-        self.stdout.write(self.style.SUCCESS(
-            f"Success! Created {len(specialties_objs)} specialties, {cant_medicos} physicians with synthetic NPIs, and {cant_pacientes} patients with formatted SSNs."
-        ))
+        return (
+            f"Success! Created {len(specialties_objs)} specialties, {cant_medicos} physicians with synthetic NPIs, "
+            f"and {cant_pacientes} patients with formatted SSNs."
+        )

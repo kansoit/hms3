@@ -103,12 +103,11 @@ HMS 3.0 uses **native uppercase schemas** for each country:
 
 ## ⚡ Cache-Controlled Multi-Environment Architecture
 
-A key challenge during live demonstrations is comparing **Simulated Production (Port 8012)** against **Masked Test VDB (Port 8013)** simultaneously. HMS 3.0 addresses browser caching and session isolation:
+A key challenge during live demonstrations is comparing **Simulated Production (Port 8012)** against **Masked Test VDB (Port 8013)** simultaneously. HMS 3.0 addresses browser caching and cookie isolation:
 
 1. **Environment Cookie Isolation**:
-   * Session cookies and CSRF tokens are dynamically suffixed with the active environment:
+   * The CSRF cookie is dynamically suffixed with the active environment (the app uses no sessions or logins):
      ```python
-     SESSION_COOKIE_NAME = f'hms3_session_{HMS_ENV}'
      CSRF_COOKIE_NAME = f'hms3_csrf_{HMS_ENV}'
      ```
    * This permits opening Production and Test VDB in **adjacent tabs of the same browser window** without cookie collisions.
@@ -176,7 +175,7 @@ HMS 3.0 provides pre-configured template files (`.example`) for each environment
 # Core Configuration
 DJANGO_SECRET_KEY=hms3-secret-key-replace-in-production
 ALLOWED_HOSTS=*
-DEBUG=True
+DEBUG=False                   # Keep False for demos: no tracebacks on screen
 
 # Environment & Localization
 HMS_ENV=prod                  # 'prod' (8012) or 'test' (8013)
@@ -206,10 +205,10 @@ HMS 3.0 includes an all-in-one Python CLI controller (**`hms-ctl.py`**) that sup
 
 | Command | Arguments | Description |
 | :--- | :--- | :--- |
-| `start` | `-e <prod\|test> -c <ar\|br\|us> [-b]` | Starts the container environment (refuses to overwrite existing instances; optionally `-b` to rebuild image). |
+| `start` | `-e <prod\|test> -c <ar\|br\|us> [-b]` | Starts the container environment and verifies the app answers and can read its database (refuses to overwrite existing instances; optionally `-b` to rebuild image). |
 | `stop` | `-e <prod\|test> -c <ar\|br\|us> [-t seconds]` | Cleanly stops the container (default graceful timeout: 2s). |
 | `restart` | `-e <prod\|test> -c <ar\|br\|us> [-b]` | Restarts the existing container environment (optionally `-b` to rebuild image). |
-| `status` | `[-e <prod\|test>] [-c <ar\|br\|us>]` | Displays a live summary table of all environments (ports 8012 & 8013). |
+| `status` | `[-e <prod\|test>] [-c <ar\|br\|us>]` | Displays a live summary table of all environments (ports 8012 & 8013), including the real health check (database reachable, patient count) and the image build. |
 | `logs` | `-e <prod\|test> -c <ar\|br\|us> [-f] [-n lines]` | Displays or follows live container logs. |
 | `rm` | `-e <prod\|test> -c <ar\|br\|us> [-f]` | Removes the container cleanly without errors if missing (`-f` to force remove if running). |
 | `build` | `[-t tag] [--no-cache]` | Rebuilds the HMS 3.0 container image. |
@@ -275,9 +274,20 @@ HMS 3.0 includes dedicated Django management commands to populate databases with
 
 ### Seeding Command Options
 All three seeding commands accept the following options:
-* `--clean`: Resets the database state: truncates existing tables, executes `DBCC CHECKIDENT ('<TABLE>', RESEED, 0)` in SQL Server, and ensures new records begin sequentially at **ID 1**.
+* `--clean`: Drops and recreates the three tables of that country, so new records begin sequentially at **ID 1**. It is the only way to delete data.
 * `--pacientes <N>`: Number of patients to generate (default: `40`).
 * `--medicos <M>`: Number of physicians to generate (default: `10`).
+* `--seed <N>`: Random seed. The same number always generates the same people, which is useful for a scripted demo (birth dates are relative to the current day).
+
+### Seeding Safety Rules
+* **Without `--clean` a seeder never deletes anything.** It creates the database and tables if they are missing; if the tables already contain rows or do not match the expected schema, it stops and tells you to use `--clean`.
+* **Each seeder only runs in its own country.** `seed_argentina` refuses to run unless the container has `HMS_COUNTRY=AR` (same for `seed_brazil`/`BR` and `seed_usa`/`US`), so a wrong command cannot wipe another country's database.
+* **The tables have no `FOREIGN KEY` constraints, on purpose.** SQL Server rejects `TRUNCATE TABLE` on a table referenced by a foreign key, which breaks Delphix on-the-fly masking jobs that use the Truncate option. The relationships (`MEDICO_ID`, `ESPECIALIDAD_ID`, etc.) are plain columns enforced by the application.
+
+### Masking Ruleset Guidelines
+* **Include the three tables in the ruleset**, for both in-place and on-the-fly masking. With on-the-fly, a table left out of the ruleset is not copied to the target, and physicians whose specialty row is missing do not show up in the app.
+* **The specialties table carries no algorithms.** It is a catalog with no personal data: `ID`, the specialty name (`ESPECIALIDAD` in AR, `ESPECIALIDADE` in BR, `SPECIALTY` in US) and its description. That column is deliberately not called `NOMBRE` / `NOME` / `NAME`, so no profiler mistakes it for a person's name. If profiling ever assigns it an algorithm, remove it.
+* **Never mask `ID`, `ESPECIALIDAD_ID` / `ESPECIALIDADE_ID` / `SPECIALTY_ID` or `MEDICO_ID` / `DOCTOR_ID`.** The relationships between the tables depend on those values arriving unchanged.
 
 ### Clinical & Diagnostic Consistency
 All seeders enforce clinical consistency:
@@ -363,7 +373,7 @@ HMS 3.0 provides a standardized, English-first RESTful API with normalized patie
 
 | Method | Endpoint | Description | Request Payload |
 |---|---|---|---|
-| `GET` | `/api/health/` | Service health status, environment, database, masking state | None |
+| `GET` | `/api/health/` | Real health check: queries the database. `200`/`UP` with row counts, or `503`/`DOWN` if the database is not available | None |
 | `GET` | `/api/patients/` | List all patients (supports `?q=<search_term>` query) | Query params |
 | `GET` | `/api/patient/<id>/` | Detailed patient record containing simulated sensitive/health data | None |
 | `POST` | `/api/patient/save/` | Create or update a patient record | JSON or Form Data |
@@ -382,7 +392,14 @@ curl -s http://localhost:8012/api/health/ | jq .
   "environment": "prod",
   "country": "AR",
   "database": "hms3_ar",
-  "masked": false
+  "masked": false,
+  "build": "f68e50b",
+  "patients": 40,
+  "doctors": 10,
+  "specialties": 12,
+  "integrity": "OK",
+  "doctors_without_specialty": 0,
+  "patients_with_missing_doctor": 0
 }
 ```
 
@@ -456,11 +473,11 @@ hms3/
 │   ├── hms_project/
 │   │   ├── __init__.py
 │   │   ├── settings.py          # Cookie isolation, MSSQL engine config
-│   │   ├── middleware.py        # NoCacheMiddleware & Demo Context Processor
+│   │   ├── middleware.py        # NoCache, database-unavailable page & Demo Context Processor
 │   │   ├── urls.py
 │   │   └── wsgi.py
 │   ├── core/
-│   │   ├── admin.py             # Multi-country dynamic Django Admin
+│   │   ├── country.py           # Real ORM field names per country (single code path in views)
 │   │   ├── i18n.py              # Localization dictionary (AR, BR, US)
 │   │   ├── models.py            # Dynamic model selector based on HMS_COUNTRY
 │   │   ├── models_ar.py         # Argentine schema (PACIENTES, MEDICOS, DNI, CUIL)
@@ -468,17 +485,21 @@ hms3/
 │   │   ├── models_us.py         # US schema (PATIENTS, DOCTORS, SSN, NPI, ZIP)
 │   │   ├── synthetic_identifiers.py # Shared synthetic generators & collision avoidance
 │   │   ├── views.py             # Multi-country dashboard, detail API, save/delete
-│   │   ├── migrations/
-│   │   │   └── 0001_initial.py  # Argentine baseline migration (see note below)
+│   │   ├── tests.py             # Smoke tests (run with run_smoke_tests.sh)
 │   │   └── management/
+│   │       ├── seed_base.py     # Shared seeder logic: schema, safety rules, --clean, --seed
 │   │       └── commands/
 │   │           ├── seed_argentina.py  # DNI + Modulo 11 CUIL generator
 │   │           ├── seed_brazil.py     # CPF + Modulo 11 + CRM generator
 │   │           └── seed_usa.py        # SSN + Modulo 10 Luhn NPI generator
+│   ├── static/vendor/           # Bootstrap 5.3.3 & Font Awesome 6.5.1 (served locally, no CDN)
 │   ├── templates/
 │   │   ├── base.html            # Dynamic banners, environment clocks, anti-cache
-│   │   └── dashboard.html       # KPI cards, patient roster, physicians, modals
-│   └── requirements.txt         # Django, mssql-django, pyodbc, gunicorn, whitenoise
+│   │   ├── dashboard.html       # KPI cards, patient roster, physicians, modals
+│   │   ├── db_unavailable.html  # Friendly auto-retry page while the database is down
+│   │   └── 500.html             # Generic error page
+│   ├── run_smoke_tests.sh       # Runs the smoke tests for AR, BR and US on SQLite
+│   └── requirements.txt         # Pinned: Django, mssql-django, pyodbc, gunicorn, whitenoise
 ├── docker-compose-app.yml       # Podman Compose service definition
 ├── Dockerfile.django            # Multi-stage build with Microsoft ODBC Driver 18
 ├── hms-ctl.py                   # Unified multi-country container lifecycle CLI
@@ -493,7 +514,17 @@ hms3/
 ```
 
 > [!NOTE]
-> **Database Migrations & Schemas**: `0001_initial.py` is the original Argentine baseline Django migration. The regional SQL Server demo schemas for AR, BR, and US are created and maintained by the country-specific seed commands (`seed_argentina`, `seed_brazil`, `seed_usa`).
+> **Database Migrations & Schemas**: Django migrations are disabled for this app (`MIGRATION_MODULES = {'core': None}` and `managed = False` on every model). The regional SQL Server demo schemas for AR, BR, and US are created and maintained only by the country-specific seed commands (`seed_argentina`, `seed_brazil`, `seed_usa`).
+
+### Demo Reliability Features
+* **No internet needed**: Bootstrap and Font Awesome are served from `static/vendor/`, not from a CDN.
+* **Database down page**: if SQL Server does not answer (VDB being refreshed or rewound, database not seeded), the UI shows a "database not available" page that retries every 5 seconds and comes back by itself; the API answers `503` with JSON. No tracebacks on screen.
+* **Broken reference warning**: since the tables have no foreign keys, `/api/health/` also reports `"integrity": "OK"` or `"BROKEN"`, with the number of physicians pointing to a missing specialty and patients pointing to a missing physician (typically a masking ruleset that left a table out). `hms-ctl.py start`, `restart` and `status` print the warning, and such physicians are listed as "no specialty" instead of vanishing.
+* **Real health check**: `/api/health/` queries the database and returns `503` / `"status": "DOWN"` when it cannot. `hms-ctl.py start`, `restart` and `status` use it, so "running" means the app can actually read its data.
+* **Timeouts**: connection (`DB_CONNECT_TIMEOUT`, default 5 s) and query (`DB_QUERY_TIMEOUT`, default 30 s) timeouts plus a 60 s gunicorn worker timeout keep a non-responding database from hanging the app.
+* **Fail-fast configuration**: the container refuses to start with a clear message if `DB_HOST` is missing or `HMS_ENV` / `HMS_COUNTRY` are invalid.
+* **Image build stamp**: `hms-ctl.py build` stamps the image with the repo commit. It is shown in the page footer, in `/api/health/` and in `hms-ctl.py status`, which warns when a container runs code older than the repo (code changes need `./hms-ctl.py restart -e <env> -c <country> --build`).
+* **Smoke tests**: `cd application && ./run_smoke_tests.sh` runs the demo flow (seed, dashboard, search, create/edit/delete patient, database-down page) for the three countries on SQLite, without touching SQL Server. Run it before a demo after any code change.
 
 ---
 
