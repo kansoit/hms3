@@ -22,6 +22,7 @@ class Specialty(models.Model):
 
     class Meta:
         db_table = 'SPECIALTIES'
+        managed = False
         verbose_name = 'Medical Specialty'
         verbose_name_plural = 'Medical Specialties'
         ordering = ['name']
@@ -98,6 +99,7 @@ class Doctor(models.Model):
 
     class Meta:
         db_table = 'DOCTORS'
+        managed = False
         verbose_name = 'Doctor'
         verbose_name_plural = 'Doctors'
         ordering = ['last_name', 'first_name']
@@ -298,6 +300,7 @@ class Patient(models.Model):
 
     class Meta:
         db_table = 'PATIENTS'
+        managed = False
         verbose_name = 'Patient'
         verbose_name_plural = 'Patients'
         ordering = ['last_name', 'first_name']

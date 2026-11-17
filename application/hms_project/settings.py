@@ -72,6 +72,13 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'hms_project.wsgi.application'
 
+# --- MIGRATIONS ---
+# El schema de core (ESPECIALIDADES, MEDICOS, PACIENTES y equivalentes BR/US)
+# lo crean los seeders (seed_argentina, seed_brazil, seed_usa), no Django.
+# Con None, makemigrations/migrate no generan ni aplican migrations de core;
+# los modelos además tienen managed = False.
+MIGRATION_MODULES = {'core': None}
+
 # --- CONFIGURACIÓN DE BASE DE DATOS (SQL SERVER / MSSQL) ---
 DB_HOST = os.getenv('DB_HOST')
 _default_db_prefix = "hms3" if HMS_ENV == 'prod' else "vhms3"

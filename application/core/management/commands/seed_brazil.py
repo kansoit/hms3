@@ -223,7 +223,7 @@ class Command(BaseCommand):
                 RG NVARCHAR(15) NOT NULL UNIQUE,
                 SOBRENOME NVARCHAR(60) NOT NULL,
                 NOME NVARCHAR(60) NOT NULL,
-                ESPECIALIDADE_ID INT NOT NULL FOREIGN KEY REFERENCES ESPECIALIDADES(ID),
+                ESPECIALIDADE_ID INT NOT NULL,
                 TELEFONE_CELULAR NVARCHAR(25) NOT NULL,
                 EMAIL NVARCHAR(100) NOT NULL
             );
@@ -246,7 +246,7 @@ class Command(BaseCommand):
                 NUMERO_CARTEIRINHA NVARCHAR(30) NOT NULL,
                 DIAGNOSTICO NVARCHAR(150) NOT NULL,
                 PRONTUARIO NVARCHAR(MAX) NOT NULL,
-                MEDICO_ID INT NULL FOREIGN KEY REFERENCES MEDICOS(ID),
+                MEDICO_ID INT NULL,
                 DATA_INTERNACAO DATE NOT NULL DEFAULT GETDATE()
             );
 

@@ -222,7 +222,7 @@ class Command(BaseCommand):
                 STATE_ID NVARCHAR(15) NOT NULL UNIQUE,
                 LAST_NAME NVARCHAR(60) NOT NULL,
                 FIRST_NAME NVARCHAR(60) NOT NULL,
-                SPECIALTY_ID INT NOT NULL FOREIGN KEY REFERENCES SPECIALTIES(ID),
+                SPECIALTY_ID INT NOT NULL,
                 PHONE_NUMBER NVARCHAR(25) NOT NULL,
                 EMAIL NVARCHAR(100) NOT NULL
             );
@@ -245,7 +245,7 @@ class Command(BaseCommand):
                 POLICY_NUMBER NVARCHAR(30) NOT NULL,
                 DIAGNOSIS NVARCHAR(150) NOT NULL,
                 CLINICAL_NOTES NVARCHAR(MAX) NOT NULL,
-                DOCTOR_ID INT NULL FOREIGN KEY REFERENCES DOCTORS(ID),
+                DOCTOR_ID INT NULL,
                 ADMISSION_DATE DATE NOT NULL DEFAULT GETDATE()
             );
 
