@@ -29,6 +29,103 @@ It showcases key end-to-end data lifecycle capabilities:
 
 ---
 
+## 🚦 Quick Start: From Zero to a Working Demo
+
+Follow these steps in order. Each one says what to run and what you should see. The examples use Argentina (`ar`); for Brazil or USA replace `ar` with `br` or `us`, and `seed_argentina` with `seed_brazil` or `seed_usa`.
+
+### What You Need
+* A Linux host with **Podman** (or Docker), **Python 3**, **git** and `sudo`.
+* A **SQL Server** instance reachable from that host on port `1433`, and a login allowed to create a database and its tables (the examples use `sa`). You do not need to create the database: the seed command does it.
+* Ports **8012** (Production) and **8013** (Test) free on the host.
+* Internet access **only to build the image**. Running the demo needs no internet.
+
+### Step 1. Get the Code
+```bash
+git clone <repository-url> hms3
+cd hms3
+```
+
+### Step 2. Create the Configuration File
+Copy the template for the Production environment of your country and edit it:
+```bash
+cp .env-prod-ar.example .env-prod-ar
+vi .env-prod-ar
+```
+Change only these two values; leave the rest as they are:
+
+| Variable | What to put |
+| :--- | :--- |
+| `DB_HOST` | IP or hostname of your SQL Server |
+| `DB_PASSWORD` | Password of the SQL Server login (`DB_USER`, `sa` by default) |
+
+### Step 3. Build the Image
+```bash
+./hms-ctl.py build
+```
+The first build downloads the base images and takes a few minutes. It must end with:
+```
+✔ Image 'hms3-app:1.0' built successfully (build <commit>).
+```
+
+### Step 4. Start Production
+```bash
+./hms-ctl.py start -e prod -c ar
+```
+**The first time, this warning is expected** because the database has no tables yet:
+```
+⚠ Application is running at http://<HOST-IP>:8012/ but the DATABASE IS NOT AVAILABLE (hms3_ar).
+```
+Continue with the next step.
+
+### Step 5. Load the Data
+```bash
+sudo podman exec hms3_prod python manage.py seed_argentina
+```
+This creates the database if it does not exist, creates the three tables and loads 12 specialties, 10 physicians and 40 patients. It must end with a line starting with `¡Éxito!` (`Sucesso!` for Brazil, `Success!` for USA).
+
+> If you use rootless Podman (`HMS_ROOTLESS=1`) omit `sudo`. With Docker, use `sudo docker exec`.
+
+### Step 6. Verify
+```bash
+./hms-ctl.py status
+```
+The `hms3_prod` row must show `RUNNING` and `OK (40 pat.)`:
+```
+PROJECT      ENV    COUNTRY  PORT   STATUS       HEALTH           BUILD          URL
+hms3_prod    prod   AR       8012   RUNNING      OK (40 pat.)     <commit>       http://<HOST-IP>:8012/
+```
+Open `http://<HOST-IP>:8012/` in a browser: you must see the red Production banner and the patient list.
+
+### Step 7. Create the Masked Copy with Delphix
+Do this in the Delphix products, as described in the [Presales Demonstration Playbook](#-presales-demonstration-playbook) (Steps 2 to 4):
+1. Link the database `hms3_ar` as a **dSource**.
+2. Provision the **VDB** `vhms3_ar`.
+3. Profile and mask the VDB, following the [Masking Ruleset Guidelines](#masking-ruleset-guidelines).
+
+### Step 8. Start Test (the Masked VDB)
+```bash
+cp .env-test-ar.example .env-test-ar
+vi .env-test-ar          # set DB_HOST and DB_PASSWORD of the SQL Server that hosts the VDB
+./hms-ctl.py start -e test -c ar
+./hms-ctl.py status
+```
+**Do not run a seed command on Test**: its data comes from the VDB. Open `http://<HOST-IP>:8013/`: you must see the green banner and the masked data.
+
+### Everyday Commands
+| I want to... | Command |
+| :--- | :--- |
+| See if everything works | `./hms-ctl.py status` |
+| Stop an environment | `./hms-ctl.py stop -e prod -c ar` |
+| Start it again | `./hms-ctl.py start -e prod -c ar` |
+| See the application logs | `./hms-ctl.py logs -e prod -c ar` |
+| Regenerate Production data from scratch | `sudo podman exec hms3_prod python manage.py seed_argentina --clean` |
+| Apply code changes (rebuild and recreate) | `./hms-ctl.py restart -e prod -c ar --build` |
+| Switch an environment to another country | `./hms-ctl.py rm -e prod -c ar -f` and then `./hms-ctl.py start -e prod -c br` |
+
+If something does not look like described here, go to [Troubleshooting](#-troubleshooting).
+
+---
+
 ## 🌍 Multi-Country Regulatory Architecture
 
 HMS 3.0 supports **three independent country modes**, dynamically selected via the `HMS_COUNTRY` and `DB_NAME` environment variables. The application adapts its database schema, table names, sensitive column identifiers, UI language, clinical terminologies, and regulatory notices accordingly.
@@ -171,6 +268,8 @@ sudo docker build -t hms3-app:1.0 -f Dockerfile.django .
    ./build-and-push.sh
    ```
 
+After building, continue with [Quick Start, Step 4](#step-4-start-production) to start the application and load its data.
+
 The script stops before building if there is no registry session. It uses `sudo podman`, like `hms-ctl.py`; export `HMS_ROOTLESS=1` to use rootless `podman` (and log in without `sudo`).
 
 ---
@@ -210,6 +309,10 @@ DB_PORT=1433                  # Default SQL Server Port
 DB_NAME=hms3_us               # Target Database
 DB_USER=sa                    # SQL Server User
 DB_PASSWORD=YourStrongPasswordHere  # SQL Server Password
+
+# Optional (defaults shown): seconds before giving up on a database that does not answer
+DB_CONNECT_TIMEOUT=5
+DB_QUERY_TIMEOUT=30
 ```
 
 ---
@@ -328,8 +431,14 @@ This step-by-step walkthrough demonstrates how to deliver an impactful Delphix C
 ./hms-ctl.py start -e prod -c ar
 
 # 2. Populate fresh, clean records starting at ID 1 (matches hms-ctl rootfull execution)
+#    --clean drops and regenerates the data; it also works the first time, on an empty database
 sudo podman exec hms3_prod python manage.py seed_argentina --clean
+
+# 3. Verify: the hms3_prod row must show RUNNING and OK (40 pat.)
+./hms-ctl.py status
 ```
+> On a database that has never been seeded, step 1 warns that the **database is not available**. That is expected: step 2 creates the tables and the data.
+
 *Show the audience the Production UI at `http://<HOST-IP>:8012/`.* Point out the unmasked DNIs, CUILs, patient names, addresses, and clinical notes under the crimson red Production banner.
 
 ### Step 2: Ingest Production (dSource) & Virtualize (VDB Provisioning)
@@ -348,7 +457,7 @@ sudo podman exec hms3_prod python manage.py seed_argentina --clean
    * 🇺🇸 **USA**: `SSN`, `STATE_ID`, `NPI`, `LAST_NAME`, `FIRST_NAME`, `ZIP_CODE`, `CLINICAL_NOTES`.
 
 ### Step 4: Execute In-Place Masking on the VDB
-1. Assign the appropriate algorithms in the Inventory / Rule Set (e.g. `AR_DNI`, `AR_CUIL`, `dlpx-core:Phone Unique`, `First Name`, `Last Name`, `Address`, `Comment / Free Text`).
+1. Build the Rule Set with the **three tables** and assign the appropriate algorithms only to the sensitive columns (see [Masking Ruleset Guidelines](#masking-ruleset-guidelines)): e.g. `AR_DNI`, `AR_CUIL`, `dlpx-core:Phone Unique`, `First Name`, `Last Name`, `Address`, `Comment / Free Text`).
 2. Run the Delphix Masking Job **in-place directly on the VDB**.
    * *Highlight to the customer*: Masking is executed in-place on the target non-production database, avoiding the need to extract or stage sensitive records through separate external application pipelines. When deterministic or consistent masking algorithms are appropriately configured, referential relationships remain preserved.
 3. Once the masking job completes, create a VDB bookmark or snapshot in Delphix DCT to establish a clean "Masked Baseline".
@@ -357,7 +466,9 @@ sudo podman exec hms3_prod python manage.py seed_argentina --clean
 1. Deploy the Test VDB application container:
    ```bash
    ./hms-ctl.py start -e test -c ar
+   ./hms-ctl.py status
    ```
+   Both rows must show `RUNNING` and `OK (40 pat.)`. A `BROKEN REFS` health means the masking job left relationships pointing to missing rows: review the Rule Set before showing the result.
 2. Open both environments in adjacent browser tabs:
    * **Left Tab (Prod)**: `http://<HOST-IP>:8012/` (Red Banner - Simulated Production Data)
    * **Right Tab (Test VDB)**: `http://<HOST-IP>:8013/` (Green Banner - Masked Non-Production Data)
@@ -382,6 +493,28 @@ sudo podman exec hms3_prod python manage.py seed_argentina --clean
 5. In the HMS 3.0 Test application (Port 8013), click **`[🔄 Refresh Data]`**:
    * Patient ID #1 is restored to its exact original state.
    * No physical backup restoration, no duplicated storage waste, and minimal downtime for the engineering team.
+
+---
+
+## 🛠 Troubleshooting
+
+Start with `./hms-ctl.py status`; for details use `./hms-ctl.py logs -e <prod|test> -c <ar|br|us>`.
+
+| What you see | Why | What to do |
+| :--- | :--- | :--- |
+| `Configuration file '.env-prod-ar' does not exist.` | The configuration file was not created. | `cp .env-prod-ar.example .env-prod-ar` and set `DB_HOST` and `DB_PASSWORD` (Quick Start, Step 2). |
+| `DATABASE IS NOT AVAILABLE` on `start`, `DB DOWN` in `status`, or the page "Database not available" | The app runs but cannot read its tables: the database was never seeded, SQL Server is down or unreachable, `DB_HOST` / `DB_PASSWORD` are wrong, or the VDB is being refreshed or rewound. | First time on Production: run the seed command (Quick Start, Step 5). Otherwise check the values in the `.env-*` file and that SQL Server answers. The page retries by itself every 5 seconds; no restart is needed once the database is back. |
+| `the application does not answer on port ...` on `start`, or `NO RESPONSE` in `status` | The container started but the application did not. | Read the logs. `Falta DB_HOST` means the `.env-*` file has no `DB_HOST`; `HMS_COUNTRY inválido` or `HMS_ENV inválido` mean a wrong value in that file. Fix it, then `./hms-ctl.py rm -e prod -c ar -f` and `start` again. |
+| Seed: `already has data (...). Nothing was changed.` | The tables already contain rows; a seed never deletes without being told to. | To keep the data, do nothing. To regenerate it, run the seed with `--clean`. |
+| Seed: `has tables that do not match the AR schema` | The tables were created by an older version or for another country. | Run the seed with `--clean` to drop and recreate them. |
+| Seed: `This seeder is for HMS_COUNTRY=AR, but this environment is configured as HMS_COUNTRY=...` | The seed command does not match the country of the container. | Use the seed of that country (`seed_argentina`, `seed_brazil`, `seed_usa`). |
+| Seed: `Cannot connect to SQL Server ...` | Wrong host, port or credentials, or SQL Server is not reachable from the host. | Check `DB_HOST`, `DB_PORT`, `DB_USER` and `DB_PASSWORD` in the `.env-*` file. After editing it, recreate the container: `./hms-ctl.py rm -e prod -c ar -f` and `start`. |
+| `Container '...' already exists with a different configuration` | The container was created for another country. | `./hms-ctl.py rm -e prod -c <old-country> -f` and then `start` with the new one. |
+| `status` shows the build followed by `*` | The container runs code from a different commit than the repo. | `./hms-ctl.py restart -e prod -c ar --build`. |
+| `status` shows `BROKEN REFS` | Physicians point to a missing specialty, or patients to a missing physician. The tables have no foreign keys, so SQL Server does not prevent it. | Review the masking Rule Set: it must include the three tables and must not mask `ID` or relationship columns (see [Masking Ruleset Guidelines](#masking-ruleset-guidelines)). Then refresh or rewind the VDB and run the job again. |
+| The Test environment shows unmasked data | The masking job has not run on the VDB, or Test points to the Production database. | Check `DB_NAME` in `.env-test-ar` (it must be the VDB, e.g. `vhms3_ar`) and run the masking job. |
+| `build-and-push.sh`: `no hay sesión en <registry>` | There is no registry login for the engine that runs the build. | `sudo podman login <registry-host>:<port> -u <user>` (without `sudo` if `HMS_ROOTLESS=1`). |
+| Changes to a `.env-*` file have no effect | A container reads its configuration only when it is created. | `./hms-ctl.py rm -e prod -c ar -f` and then `./hms-ctl.py start -e prod -c ar`. |
 
 ---
 
