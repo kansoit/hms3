@@ -249,36 +249,64 @@ def get_container_country(cmd_prefix: List[str], container_name: str) -> Optiona
     return None
 
 
-def git_build_id() -> str:
-    """Short commit of the repo, with '-dirty' if there are uncommitted changes."""
+def _inspect(cmd_prefix: List[str], args: List[str]) -> Optional[str]:
     try:
-        sha = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=str(BASE_DIR), capture_output=True, text=True, check=True, timeout=5,
-        ).stdout.strip()
-        dirty = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=no"],
-            cwd=str(BASE_DIR), capture_output=True, text=True, check=True, timeout=5,
-        ).stdout.strip()
-        return f"{sha}-dirty" if dirty else sha
+        res = subprocess.run(cmd_prefix + args, capture_output=True, text=True, check=True)
     except Exception:
-        return "unknown"
+        return None
+    value = res.stdout.strip()
+    return value or None
 
 
-def build_image(cmd_prefix: List[str], tag: str, no_cache: bool = False) -> int:
-    """Builds the image and stamps it with the repo commit (HMS_BUILD)."""
-    build_id = git_build_id()
-    print_info(f"Building container image '{tag}' (build {build_id})...")
-    build_cmd = cmd_prefix + ["build", "-t", tag, "-f", "Dockerfile.django", "--build-arg", f"HMS_BUILD={build_id}"]
-    if no_cache:
-        build_cmd.append("--no-cache")
-    build_cmd.append(".")
-    res = subprocess.run(build_cmd, cwd=str(BASE_DIR))
-    if res.returncode != 0:
-        print_error("Failed to build container image.")
-    else:
-        print_ok(f"Image '{tag}' built successfully (build {build_id}).")
-    return res.returncode
+def _short_id(value: Optional[str]) -> Optional[str]:
+    return value.replace("sha256:", "") if value else None
+
+
+def current_image_id(cmd_prefix: List[str]) -> Optional[str]:
+    """ID of the local image the containers are created from, or None if it does not exist."""
+    return _short_id(_inspect(cmd_prefix, ["image", "inspect", "--format", "{{.Id}}", DEFAULT_IMAGE]))
+
+
+def current_image_build(cmd_prefix: List[str]) -> str:
+    """Repo commit the local image was built from (stamped by build-and-push.sh)."""
+    build = _inspect(cmd_prefix, ["image", "inspect", "--format",
+                                  '{{index .Config.Labels "org.hms3.build"}}', DEFAULT_IMAGE])
+    return build if build and build != "<no value>" else "unknown"
+
+
+def container_is_outdated(cmd_prefix: List[str], container_name: str) -> bool:
+    """True if the container was created from an image older than the current local one."""
+    image = current_image_id(cmd_prefix)
+    used = _short_id(_inspect(cmd_prefix, ["inspect", "--format", "{{.Image}}", container_name]))
+    return bool(image and used and image != used)
+
+
+def image_missing_message() -> str:
+    return (f"Image '{DEFAULT_IMAGE}' does not exist on this host. "
+            f"Build it with './build-and-push.sh'.")
+
+
+def image_is_behind_code(image_build: str) -> bool:
+    """
+    True if the application code in the repo is newer than the image: there are
+    uncommitted changes under application/ or Dockerfile.django, or the last commit
+    that touched them is not included in the commit the image was built from.
+    Commits that only change documentation or hms-ctl.py do not count.
+    """
+    paths = ["application", "Dockerfile.django"]
+    try:
+        def git(*args: str) -> subprocess.CompletedProcess:
+            return subprocess.run(["git", *args], cwd=str(BASE_DIR), capture_output=True, text=True, timeout=5)
+
+        if git("status", "--porcelain", "--untracked-files=no", "--", *paths).stdout.strip():
+            return True
+        last_code_commit = git("log", "-1", "--format=%H", "--", *paths).stdout.strip()
+        commit = image_build.replace("-dirty", "")
+        if not last_code_commit or not commit or commit == "unknown":
+            return False
+        return git("merge-base", "--is-ancestor", last_code_commit, commit).returncode != 0
+    except Exception:
+        return False
 
 
 def fetch_health(port: str, timeout: float = 3.0) -> Optional[Dict[str, object]]:
@@ -399,11 +427,10 @@ def cmd_start(args: argparse.Namespace) -> int:
     print(f" Target Database  : {Colors.color(f'{db_name} @ {db_host}', Colors.DIM)}")
     print(Colors.color("═" * 60, Colors.CYAN))
 
-    # Optional Rebuild
-    if getattr(args, "build", False):
-        rc = build_image(cmd_prefix, DEFAULT_IMAGE)
-        if rc != 0:
-            return rc
+    # hms-ctl.py only manages containers: the image is built by build-and-push.sh.
+    if current_image_id(cmd_prefix) is None:
+        print_error(image_missing_message())
+        return 1
 
     # Check if container already exists
     if container_exists(cmd_prefix, container_name):
@@ -425,8 +452,17 @@ def cmd_start(args: argparse.Namespace) -> int:
         if container_is_running(cmd_prefix, container_name):
             host_ip = get_host_ip()
             print_warn(f"Container '{container_name}' ({req_code}) is already running at http://{host_ip}:{host_port}/")
-            print_info(f"Use './hms-ctl.py restart -e {env_name} -c {country}' if you wish to recreate or restart it.")
+            if container_is_outdated(cmd_prefix, container_name):
+                print_info(f"It was created from an older image. To apply the current image: "
+                           f"'./hms-ctl.py restart -e {env_name} -c {country}'.")
+            else:
+                print_info(f"Use './hms-ctl.py restart -e {env_name} -c {country}' if you wish to restart it.")
             return 0
+        elif container_is_outdated(cmd_prefix, container_name):
+            # A stopped container stays tied to the image it was created from: recreate it.
+            print_info(f"Container '{container_name}' ({req_code}) was created from an older image. "
+                       f"Recreating it with the current image...")
+            subprocess.run(cmd_prefix + ["rm", "-f", container_name], capture_output=True)
         else:
             print_info(f"Container '{container_name}' ({req_code}) exists but is stopped. Starting it...")
             res = subprocess.run(cmd_prefix + ["start", container_name], capture_output=True, text=True)
@@ -598,16 +634,18 @@ def cmd_restart(args: argparse.Namespace) -> int:
         print_info(f"To switch country, first remove the existing container: './hms-ctl.py rm -e {existing_env} -c {existing_country} -f' and then start the new one.")
         return 1
 
-    # Optional Rebuild
-    if getattr(args, "build", False):
-        rc = build_image(cmd_prefix, DEFAULT_IMAGE)
-        if rc != 0:
-            return rc
-        print_info(f"Recreating container '{container_name}' ({req_code}) with new image...")
+    if current_image_id(cmd_prefix) is None:
+        print_error(image_missing_message())
+        return 1
+
+    # A container stays tied to the image it was created from. If the image was rebuilt
+    # since then, a plain restart would keep running the old code: recreate the container.
+    if container_is_outdated(cmd_prefix, container_name):
+        print_info(f"Container '{container_name}' ({req_code}) was created from an older image. "
+                   f"Recreating it with the current image...")
         if container_is_running(cmd_prefix, container_name):
             subprocess.run(cmd_prefix + ["stop", "-t", "2", container_name], capture_output=True)
         subprocess.run(cmd_prefix + ["rm", "-f", container_name], capture_output=True)
-        args.build = False
         return cmd_start(args)
 
     # Standard restart of the existing container
@@ -626,13 +664,14 @@ def cmd_status(args: argparse.Namespace) -> int:
     engine, cmd_prefix, ver_str = detect_engine(args.engine)
     host_ip = get_host_ip()
 
-    repo_build = git_build_id()
+    image_build = current_image_build(cmd_prefix)
+    image_exists = current_image_id(cmd_prefix) is not None
     stale = False
     warnings: List[str] = []
 
     print(Colors.color("═" * 100, Colors.CYAN))
     print(f" {Colors.color('HMS 3.0 STATUS OVERVIEW', Colors.BOLD)} • Engine: {Colors.color(ver_str, Colors.GREEN)}"
-          f" • Repo build: {repo_build}")
+          f" • Image build: {image_build if image_exists else 'no image'}")
     print(Colors.color("═" * 100, Colors.CYAN))
 
     header = f"{'PROJECT':<12} {'ENV':<6} {'COUNTRY':<8} {'PORT':<6} {'STATUS':<12} {'HEALTH':<16} {'BUILD':<14} {'URL':<26}"
@@ -654,7 +693,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             if getattr(args, "country", None) and args.country.upper() != country_code.upper():
                 continue
             build = env_vars.get("HMS_BUILD", "unknown")
-            if build != repo_build:
+            if container_is_outdated(cmd_prefix, c_name):
                 stale = True
                 build_str = Colors.color(f"{build} *".ljust(14), Colors.YELLOW)
             else:
@@ -694,8 +733,13 @@ def cmd_status(args: argparse.Namespace) -> int:
     for warning in warnings:
         print_warn(warning)
     if stale:
-        print_warn(f"* Container built from a different commit than the repo ({repo_build}). "
-                   f"Code changes are not applied until you rebuild: './hms-ctl.py restart -e <env> -c <country> --build'.")
+        print_warn("* Container created from an older image than the current one. "
+                   "To apply the current image: './hms-ctl.py restart -e <env> -c <country>'.")
+    if not image_exists:
+        print_warn(image_missing_message())
+    elif image_is_behind_code(image_build):
+        print_warn(f"The application code in the repo is newer than the image (build {image_build}). "
+                   f"To apply it: './build-and-push.sh' and then restart the containers.")
     return 0
 
 
@@ -738,13 +782,6 @@ def cmd_logs(args: argparse.Namespace) -> int:
         return 0
 
 
-def cmd_build(args: argparse.Namespace) -> int:
-    engine, cmd_prefix, ver_str = detect_engine(args.engine)
-    tag = getattr(args, "tag", DEFAULT_IMAGE) or DEFAULT_IMAGE
-
-    return build_image(cmd_prefix, tag, no_cache=getattr(args, "no_cache", False))
-
-
 # CLI Parser Construction
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -760,7 +797,8 @@ Examples:
   ./hms-ctl.py rm -e prod -c ar -f       Force remove Production container
   ./hms-ctl.py status                    Display live status of all environments
   ./hms-ctl.py logs -e prod -c ar -f     Follow live logs for Production Argentina
-  ./hms-ctl.py build                     Rebuild the HMS container image
+
+The container image is built by ./build-and-push.sh, not by this tool.
 """,
     )
 
@@ -776,10 +814,9 @@ Examples:
         )
 
     # Command: start
-    p_start = subparsers.add_parser("start", help="Start an HMS container environment")
+    p_start = subparsers.add_parser("start", help="Start an HMS container environment with the current image")
     p_start.add_argument("-e", "--env", required=True, choices=["prod", "test"], help="Environment: 'prod' or 'test'")
     p_start.add_argument("-c", "--country", required=True, choices=["ar", "br", "us"], help="Country: 'ar', 'br', or 'us'")
-    p_start.add_argument("-b", "--build", action="store_true", help="Rebuild container image before starting")
     add_common(p_start)
 
     # Command: stop
@@ -790,10 +827,9 @@ Examples:
     add_common(p_stop)
 
     # Command: restart
-    p_restart = subparsers.add_parser("restart", help="Restart an HMS container environment")
+    p_restart = subparsers.add_parser("restart", help="Restart an HMS container environment (recreates it if the image was rebuilt)")
     p_restart.add_argument("-e", "--env", required=True, choices=["prod", "test"], help="Environment: 'prod' or 'test'")
     p_restart.add_argument("-c", "--country", required=True, choices=["ar", "br", "us"], help="Country: 'ar', 'br', or 'us'")
-    p_restart.add_argument("-b", "--build", action="store_true", help="Rebuild image before restarting")
     add_common(p_restart)
 
     # Command: rm
@@ -817,12 +853,6 @@ Examples:
     p_logs.add_argument("-n", "--tail", type=int, default=50, help="Number of lines to show (default: 50)")
     add_common(p_logs)
 
-    # Command: build
-    p_build = subparsers.add_parser("build", help="Rebuild the container image")
-    p_build.add_argument("-t", "--tag", default=DEFAULT_IMAGE, help=f"Image tag (default: {DEFAULT_IMAGE})")
-    p_build.add_argument("--no-cache", action="store_true", help="Do not use cache when building image")
-    add_common(p_build)
-
     return parser
 
 
@@ -842,7 +872,6 @@ def main() -> int:
         "remove": cmd_rm,
         "status": cmd_status,
         "logs": cmd_logs,
-        "build": cmd_build,
     }
 
     handler = cmd_dispatch.get(args.command)

@@ -58,13 +58,14 @@ Change only these two values; leave the rest as they are:
 | `DB_HOST` | IP or hostname of your SQL Server |
 | `DB_PASSWORD` | Password of the SQL Server login (`DB_USER`, `sa` by default) |
 
-### Step 3. Build the Image
+### Step 3. Build and Publish the Image
+The first time, do the [one-time registry setup](#one-time-registry-setup). Then:
 ```bash
-./hms-ctl.py build
+./build-and-push.sh
 ```
 The first build downloads the base images and takes a few minutes. It must end with:
 ```
-✔ Image 'hms3-app:1.0' built successfully (build <commit>).
+OK: imagen subida a <registry-path> (tags: 1.0 latest).
 ```
 
 ### Step 4. Start Production
@@ -119,7 +120,7 @@ vi .env-test-ar          # set DB_HOST and DB_PASSWORD of the SQL Server that ho
 | Start it again | `./hms-ctl.py start -e prod -c ar` |
 | See the application logs | `./hms-ctl.py logs -e prod -c ar` |
 | Regenerate Production data from scratch | `sudo podman exec hms3_prod python manage.py seed_argentina --clean` |
-| Apply code changes (rebuild and recreate) | `./hms-ctl.py restart -e prod -c ar --build` |
+| Apply code changes | See [Container Image Building](#-container-image-building) |
 | Switch an environment to another country | `./hms-ctl.py rm -e prod -c ar -f` and then `./hms-ctl.py start -e prod -c br` |
 
 If something does not look like described here, go to [Troubleshooting](#-troubleshooting).
@@ -230,47 +231,41 @@ A key challenge during live demonstrations is comparing **Simulated Production (
 
 ## 📦 Container Image Building
 
-HMS 3.0 uses an optimized multi-stage build in `Dockerfile.django`:
-* **Build Stage**: Based on `python:3.11-bookworm` with compilation tools and pre-built Python wheels.
-* **Runtime Stage**: Based on `python:3.11-slim-bookworm` with Microsoft's official ODBC Driver 18 for SQL Server.
+This is the only place that explains how to build, apply and publish the image.
 
-### Build the Image
-Build the container image using the built-in CLI manager (which automatically detects Podman or Docker):
-```bash
-./hms-ctl.py build
-```
+HMS 3.0 uses a multi-stage build in `Dockerfile.django`: a build stage on `python:3.11-bookworm` and a runtime stage on `python:3.11-slim-bookworm` with Microsoft's ODBC Driver 18 for SQL Server.
 
-Or build manually using Podman or Docker:
-```bash
-# Using Podman (or omit sudo if using rootless mode)
-sudo podman build -t hms3-app:1.0 -f Dockerfile.django .
+There is **one image** (`hms3-app:1.0`) for every environment and country: Production and Test run the same image and differ only in their `.env-*` file. The image is handled by `build-and-push.sh`; `hms-ctl.py` only manages the containers.
 
-# Using Docker
-sudo docker build -t hms3-app:1.0 -f Dockerfile.django .
-```
+### One-Time Registry Setup
+The script keeps a backup of the image in a container registry (for example the GitLab Container Registry), so it needs to know where and to be logged in.
 
-### Build and Publish to a Container Registry
-`build-and-push.sh` builds the image (through `hms-ctl.py build`, so it is stamped with the repo commit) and pushes it to a container registry such as the GitLab Container Registry, with the tags `1.0` and `latest`.
-
-1. **Configure the destination (once).** Copy the template and set your registry path. `.env-registry` is excluded from git, so internal hostnames are not published:
+1. Set the destination. `.env-registry` is excluded from git, so internal hostnames are not published:
    ```bash
    cp .env-registry.example .env-registry
    # edit .env-registry: HMS_REGISTRY_IMAGE=<registry-host>:<port>/<group>/<project>/hms3-app
    ```
-2. **Log in to the registry (once per host).** Use the same engine and privilege level that will run the build. With the default `sudo podman`:
+2. Log in, with the same engine and privilege level that runs the build. Use your password or a Personal Access Token with the `read_registry` and `write_registry` scopes:
    ```bash
    sudo podman login <registry-host>:<port> -u <user>
    ```
-   Enter your password or a Personal Access Token with the `read_registry` and `write_registry` scopes.
-3. **Commit your changes.** With uncommitted changes the image is stamped as `<commit>-dirty`.
-4. **Build and push:**
-   ```bash
-   ./build-and-push.sh
-   ```
 
-After building, continue with [Quick Start, Step 4](#step-4-start-production) to start the application and load its data.
+### 1. Build and Publish
+```bash
+./build-and-push.sh
+```
+* Builds `hms3-app:1.0` and pushes it with the tags `1.0` and `latest`. It checks the registry session first and stops before building if there is none.
+* The image is stamped with the repo commit, shown in the page footer, in `/api/health/` and in `hms-ctl.py status`. With uncommitted changes the stamp ends in `-dirty`, so commit first.
+* `--no-cache` rebuilds every layer from scratch.
+* The containers are created from the local image this script leaves on the host; the copy in the registry is a backup of the image.
+* The script uses `sudo podman`, like `hms-ctl.py`; export `HMS_ROOTLESS=1` for rootless `podman`.
 
-The script stops before building if there is no registry session. It uses `sudo podman`, like `hms-ctl.py`; export `HMS_ROOTLESS=1` to use rootless `podman` (and log in without `sudo`).
+### 2. Apply It to the Environments
+A container keeps using the image it was created from. Restart each environment: `hms-ctl.py` notices the image changed and recreates the container with it.
+```bash
+./hms-ctl.py restart -e prod -c ar
+./hms-ctl.py restart -e test -c ar
+```
 
 ---
 
@@ -329,13 +324,14 @@ HMS 3.0 includes an all-in-one Python CLI controller (**`hms-ctl.py`**) that sup
 
 | Command | Arguments | Description |
 | :--- | :--- | :--- |
-| `start` | `-e <prod\|test> -c <ar\|br\|us> [-b]` | Starts the container environment and verifies the app answers and can read its database (refuses to overwrite existing instances; optionally `-b` to rebuild image). |
+| `start` | `-e <prod\|test> -c <ar\|br\|us>` | Starts the container environment with the current image and verifies the app answers and can read its database (refuses to overwrite an instance of another country). |
 | `stop` | `-e <prod\|test> -c <ar\|br\|us> [-t seconds]` | Cleanly stops the container (default graceful timeout: 2s). |
-| `restart` | `-e <prod\|test> -c <ar\|br\|us> [-b]` | Restarts the existing container environment (optionally `-b` to rebuild image). |
+| `restart` | `-e <prod\|test> -c <ar\|br\|us>` | Restarts the existing container environment. If the image was rebuilt since the container was created, it recreates the container with the current image. |
 | `status` | `[-e <prod\|test>] [-c <ar\|br\|us>]` | Displays a live summary table of all environments (ports 8012 & 8013), including the real health check (database reachable, patient count) and the image build. |
 | `logs` | `-e <prod\|test> -c <ar\|br\|us> [-f] [-n lines]` | Displays or follows live container logs. |
 | `rm` | `-e <prod\|test> -c <ar\|br\|us> [-f]` | Removes the container cleanly without errors if missing (`-f` to force remove if running). |
-| `build` | `[-t tag] [--no-cache]` | Rebuilds the HMS 3.0 container image. |
+
+`hms-ctl.py` does not build images: use `./build-and-push.sh` (see [Container Image Building](#-container-image-building)).
 
 ### CLI Examples
 
@@ -426,18 +422,7 @@ All seeders enforce clinical consistency:
 This step-by-step walkthrough demonstrates how to deliver an impactful Delphix Continuous Compliance & Data Virtualization presentation following the official Delphix presales methodology:
 
 ### Step 1: Deploy Simulated Production & Generate Fresh Data
-```bash
-# 1. Deploy Production (Port 8012) - Example: Argentina
-./hms-ctl.py start -e prod -c ar
-
-# 2. Populate fresh, clean records starting at ID 1 (matches hms-ctl rootfull execution)
-#    --clean drops and regenerates the data; it also works the first time, on an empty database
-sudo podman exec hms3_prod python manage.py seed_argentina --clean
-
-# 3. Verify: the hms3_prod row must show RUNNING and OK (40 pat.)
-./hms-ctl.py status
-```
-> On a database that has never been seeded, step 1 warns that the **database is not available**. That is expected: step 2 creates the tables and the data.
+Start Production and load its data as described in [Quick Start](#-quick-start-from-zero-to-a-working-demo), Steps 4 to 6. To begin a demo with fresh records starting at ID 1, run the seed command with `--clean`.
 
 *Show the audience the Production UI at `http://<HOST-IP>:8012/`.* Point out the unmasked DNIs, CUILs, patient names, addresses, and clinical notes under the crimson red Production banner.
 
@@ -463,12 +448,7 @@ sudo podman exec hms3_prod python manage.py seed_argentina --clean
 3. Once the masking job completes, create a VDB bookmark or snapshot in Delphix DCT to establish a clean "Masked Baseline".
 
 ### Step 5: Deploy Test Application & Verify Side-by-Side
-1. Deploy the Test VDB application container:
-   ```bash
-   ./hms-ctl.py start -e test -c ar
-   ./hms-ctl.py status
-   ```
-   Both rows must show `RUNNING` and `OK (40 pat.)`. A `BROKEN REFS` health means the masking job left relationships pointing to missing rows: review the Rule Set before showing the result.
+1. Start the Test environment as described in [Quick Start](#-quick-start-from-zero-to-a-working-demo), Step 8. In `./hms-ctl.py status` both rows must show `RUNNING` and `OK (40 pat.)`. A `BROKEN REFS` health means the masking job left relationships pointing to missing rows: review the Rule Set before showing the result.
 2. Open both environments in adjacent browser tabs:
    * **Left Tab (Prod)**: `http://<HOST-IP>:8012/` (Red Banner - Simulated Production Data)
    * **Right Tab (Test VDB)**: `http://<HOST-IP>:8013/` (Green Banner - Masked Non-Production Data)
@@ -510,7 +490,9 @@ Start with `./hms-ctl.py status`; for details use `./hms-ctl.py logs -e <prod|te
 | Seed: `This seeder is for HMS_COUNTRY=AR, but this environment is configured as HMS_COUNTRY=...` | The seed command does not match the country of the container. | Use the seed of that country (`seed_argentina`, `seed_brazil`, `seed_usa`). |
 | Seed: `Cannot connect to SQL Server ...` | Wrong host, port or credentials, or SQL Server is not reachable from the host. | Check `DB_HOST`, `DB_PORT`, `DB_USER` and `DB_PASSWORD` in the `.env-*` file. After editing it, recreate the container: `./hms-ctl.py rm -e prod -c ar -f` and `start`. |
 | `Container '...' already exists with a different configuration` | The container was created for another country. | `./hms-ctl.py rm -e prod -c <old-country> -f` and then `start` with the new one. |
-| `status` shows the build followed by `*` | The container runs code from a different commit than the repo. | `./hms-ctl.py restart -e prod -c ar --build`. |
+| `status` shows the build followed by `*` | The container was created from an older image than the current one. | `./hms-ctl.py restart -e <env> -c ar`: it recreates the container with the current image. |
+| `status` warns that the application code in the repo is newer than the image | Code under `application/` or `Dockerfile.django` changed after the image was built. | `./build-and-push.sh` and then restart each environment. |
+| `Image 'hms3-app:1.0' does not exist on this host.` | The image was never built here, or it was removed. | `./build-and-push.sh`. |
 | `status` shows `BROKEN REFS` | Physicians point to a missing specialty, or patients to a missing physician. The tables have no foreign keys, so SQL Server does not prevent it. | Review the masking Rule Set: it must include the three tables and must not mask `ID` or relationship columns (see [Masking Ruleset Guidelines](#masking-ruleset-guidelines)). Then refresh or rewind the VDB and run the job again. |
 | The Test environment shows unmasked data | The masking job has not run on the VDB, or Test points to the Production database. | Check `DB_NAME` in `.env-test-ar` (it must be the VDB, e.g. `vhms3_ar`) and run the masking job. |
 | `build-and-push.sh`: `no hay sesión en <registry>` | There is no registry login for the engine that runs the build. | `sudo podman login <registry-host>:<port> -u <user>` (without `sudo` if `HMS_ROOTLESS=1`). |
@@ -656,8 +638,8 @@ hms3/
 │   └── requirements.txt         # Pinned: Django, mssql-django, pyodbc, gunicorn, whitenoise
 ├── docker-compose-app.yml       # Podman Compose service definition
 ├── Dockerfile.django            # Multi-stage build with Microsoft ODBC Driver 18
-├── hms-ctl.py                   # Unified multi-country container lifecycle CLI
-├── build-and-push.sh            # Builds the image and pushes it to a container registry
+├── hms-ctl.py                   # Unified multi-country container lifecycle CLI (containers only)
+├── build-and-push.sh            # Builds the image (the only tool that does) and optionally publishes it
 ├── .env-registry.example        # Registry destination template for build-and-push.sh
 ├── .env.example                 # Master environment configuration template
 ├── .env-prod-ar.example         # Production Argentina configuration template
@@ -679,7 +661,7 @@ hms3/
 * **Real health check**: `/api/health/` queries the database and returns `503` / `"status": "DOWN"` when it cannot. `hms-ctl.py start`, `restart` and `status` use it, so "running" means the app can actually read its data.
 * **Timeouts**: connection (`DB_CONNECT_TIMEOUT`, default 5 s) and query (`DB_QUERY_TIMEOUT`, default 30 s) timeouts plus a 60 s gunicorn worker timeout keep a non-responding database from hanging the app.
 * **Fail-fast configuration**: the container refuses to start with a clear message if `DB_HOST` is missing or `HMS_ENV` / `HMS_COUNTRY` are invalid.
-* **Image build stamp**: `hms-ctl.py build` stamps the image with the repo commit. It is shown in the page footer, in `/api/health/` and in `hms-ctl.py status`, which warns when a container runs code older than the repo (code changes need `./hms-ctl.py restart -e <env> -c <country> --build`).
+* **Image build stamp**: `hms-ctl.py status` marks a container created from an older image and warns when the application code in the repo is newer than the image (see [Container Image Building](#-container-image-building)).
 * **Smoke tests**: `cd application && ./run_smoke_tests.sh` runs the demo flow (seed, dashboard, search, create/edit/delete patient, database-down page) for the three countries on SQLite, without touching SQL Server. Run it before a demo after any code change.
 
 ---
