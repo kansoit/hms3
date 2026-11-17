@@ -152,6 +152,27 @@ sudo podman build -t hms3-app:1.0 -f Dockerfile.django .
 sudo docker build -t hms3-app:1.0 -f Dockerfile.django .
 ```
 
+### Build and Publish to a Container Registry
+`build-and-push.sh` builds the image (through `hms-ctl.py build`, so it is stamped with the repo commit) and pushes it to a container registry such as the GitLab Container Registry, with the tags `1.0` and `latest`.
+
+1. **Configure the destination (once).** Copy the template and set your registry path. `.env-registry` is excluded from git, so internal hostnames are not published:
+   ```bash
+   cp .env-registry.example .env-registry
+   # edit .env-registry: HMS_REGISTRY_IMAGE=<registry-host>:<port>/<group>/<project>/hms3-app
+   ```
+2. **Log in to the registry (once per host).** Use the same engine and privilege level that will run the build. With the default `sudo podman`:
+   ```bash
+   sudo podman login <registry-host>:<port> -u <user>
+   ```
+   Enter your password or a Personal Access Token with the `read_registry` and `write_registry` scopes.
+3. **Commit your changes.** With uncommitted changes the image is stamped as `<commit>-dirty`.
+4. **Build and push:**
+   ```bash
+   ./build-and-push.sh
+   ```
+
+The script stops before building if there is no registry session. It uses `sudo podman`, like `hms-ctl.py`; export `HMS_ROOTLESS=1` to use rootless `podman` (and log in without `sudo`).
+
 ---
 
 ## ⚙️ Configuration & Environment Templates
@@ -503,6 +524,8 @@ hms3/
 ├── docker-compose-app.yml       # Podman Compose service definition
 ├── Dockerfile.django            # Multi-stage build with Microsoft ODBC Driver 18
 ├── hms-ctl.py                   # Unified multi-country container lifecycle CLI
+├── build-and-push.sh            # Builds the image and pushes it to a container registry
+├── .env-registry.example        # Registry destination template for build-and-push.sh
 ├── .env.example                 # Master environment configuration template
 ├── .env-prod-ar.example         # Production Argentina configuration template
 ├── .env-test-ar.example         # Test VDB Argentina configuration template
