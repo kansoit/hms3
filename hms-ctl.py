@@ -166,6 +166,18 @@ def detect_engine(preferred: str = "auto") -> Tuple[str, List[str], str]:
             elif shutil.which("sudo"):
                 cmd_prefix = ["sudo", "podman"]
 
+    # Ask for the sudo password once, up front and without a time limit. Otherwise the
+    # prompt appears inside the checks below, which run with captured output and short
+    # timeouts: it gets cut off while typing and shows up again mixed with the output.
+    if cmd_prefix[0] == "sudo":
+        try:
+            validated = subprocess.run(["sudo", "-v"]).returncode == 0
+        except KeyboardInterrupt:
+            validated = False
+        if not validated:
+            raise SystemExit("Error: sudo authentication failed or was cancelled. "
+                             "Nothing was done. (Use HMS_ROOTLESS=1 to run podman without sudo.)")
+
     # Retrieve engine version
     ver_str = "unknown"
     try:
