@@ -1,0 +1,50 @@
+# Configuración de gitleaks para hms3.
+# La usan los hooks pre-commit y pre-push que instala el playbook
+# hms3_gitleaks_hooks.yml (repo ansible). Suma reglas propias a las de gitleaks.
+
+title = "hms3"
+
+[extend]
+useDefault = true
+
+# Un archivo .env real nunca debe entrar al repo, ni siquiera con "git add -f".
+# Solo se permiten las plantillas *.example.
+[[rules]]
+id = "hms3-env-file"
+description = "Archivo .env real (no .example) versionado"
+path = '''(^|/)\.env([.-][^/]*)?$'''
+
+[[rules.allowlists]]
+description = "Plantillas de configuración sin valores reales"
+paths = ['''\.example$''']
+
+# Valor concreto asignado a una variable sensible de los .env, en cualquier
+# archivo (código, README, scripts, plantillas).
+[[rules]]
+id = "hms3-env-sensitive-value"
+description = "Valor asignado a una variable sensible de los .env"
+regex = '''\b(DJANGO_SECRET_KEY|DB_PASSWORD|DB_USER|DB_HOST|HMS_REGISTRY_IMAGE)[ \t]*[:=][ \t]*['"]?([^\s'"#,)]{3,})'''
+secretGroup = 2
+keywords = ["django_secret_key", "db_password", "db_user", "db_host", "hms_registry_image"]
+
+[[rules.allowlists]]
+description = "Placeholders, lecturas de entorno y valores locales"
+regexTarget = "secret"
+regexes = [
+    '''(?i)change.?me''',
+    '''(?i)replace''',
+    '''(?i)example''',
+    '''(?i)^your[_-]''',
+    '''^<''',
+    '''^[$?:-]''',
+    '''(?i)^os\.''',
+    '''(?i)^(getenv|environ|db_conf|config|settings)\b''',
+    '''(?i)^(localhost|127\.0\.0\.1|sqlite|sa|none|null|true|false)$''',
+]
+
+# Dominio interno: no debe publicarse en GitHub.
+[[rules]]
+id = "hms3-internal-domain"
+description = "Referencia al dominio interno"
+regex = '''(?i)\b[a-z0-9.-]*gruponet\.com\.ar\b'''
+keywords = ["gruponet"]
